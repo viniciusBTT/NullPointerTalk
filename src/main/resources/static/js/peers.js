@@ -118,6 +118,16 @@ export class PeerMesh {
         });
     }
 
+    /** Troca a track de áudio em todas as conexões (usado ao trocar de microfone). */
+    replaceAudioTrack(newTrack) {
+        this.connections.forEach((pc) => {
+            const sender = pc.getSenders().find((s) => s.track && s.track.kind === 'audio');
+            if (sender) {
+                sender.replaceTrack(newTrack);
+            }
+        });
+    }
+
     closeAll() {
         this.connections.forEach((pc) => pc.close());
         this.connections.clear();

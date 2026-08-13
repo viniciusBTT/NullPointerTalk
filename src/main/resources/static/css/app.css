@@ -245,6 +245,36 @@ button {
     font-size: 0.85rem;
 }
 
+.device-bar {
+    display: flex;
+    justify-content: center;
+    gap: 16px;
+    padding: 8px 16px 0;
+    background: var(--bg-sidebar);
+}
+
+.device-select {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.85rem;
+    color: var(--text-muted);
+}
+
+.device-select select {
+    background: var(--bg-elevated);
+    color: var(--text);
+    border: none;
+    border-radius: 4px;
+    padding: 4px 8px;
+    font-size: 0.85rem;
+    max-width: 220px;
+}
+
+.device-select select:disabled {
+    opacity: 0.5;
+}
+
 .control-bar {
     display: flex;
     justify-content: center;

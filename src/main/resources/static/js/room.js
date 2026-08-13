@@ -1,5 +1,13 @@
 import { SignalingSocket } from './signaling.js';
-import { getLocalMedia, toggleAudioTrack, toggleVideoTrack, stopStream } from './media.js';
+import {
+    getLocalMedia,
+    toggleAudioTrack,
+    toggleVideoTrack,
+    stopStream,
+    listAudioDevices,
+    getAudioTrackForDevice,
+    supportsAudioOutputSelection,
+} from './media.js';
 import { getScreenStream } from './screenshare.js';
 import { PeerMesh } from './peers.js';
 
@@ -23,6 +31,8 @@ const micBtn = document.getElementById('toggle-mic');
 const cameraBtn = document.getElementById('toggle-camera');
 const screenBtn = document.getElementById('toggle-screen');
 const leaveBtn = document.getElementById('leave-room');
+const micSelect = document.getElementById('mic-select');
+const speakerSelect = document.getElementById('speaker-select');
 
 let localStream;
 let cameraTrack;
@@ -32,6 +42,18 @@ let signalingSocket;
 let micEnabled = true;
 let cameraEnabled = true;
 let leaving = false;
+let currentSinkId = null;
+
+async function applySinkId(videoEl) {
+    if (!currentSinkId || typeof videoEl.setSinkId !== 'function') {
+        return;
+    }
+    try {
+        await videoEl.setSinkId(currentSinkId);
+    } catch (error) {
+        console.error('Falha ao trocar a saída de áudio', error);
+    }
+}
 
 function upsertTile(tileId, stream, label, muted) {
     let tile = document.getElementById(`tile-${tileId}`);
@@ -52,8 +74,10 @@ function upsertTile(tileId, stream, label, muted) {
 
         videoGrid.appendChild(tile);
     }
-    tile.querySelector('video').srcObject = stream;
+    const video = tile.querySelector('video');
+    video.srcObject = stream;
     tile.querySelector('.video-tile__name').textContent = label;
+    applySinkId(video);
 }
 
 function removeTile(tileId) {
@@ -93,7 +117,69 @@ async function init() {
             removeTile(remotePeerId);
         },
     });
+
+    await populateDeviceSelectors();
+    navigator.mediaDevices.addEventListener('devicechange', populateDeviceSelectors);
 }
+
+function fillSelect(select, devices, selectedDeviceId) {
+    const previousValue = select.value;
+    select.innerHTML = '';
+    devices.forEach((device, index) => {
+        const option = document.createElement('option');
+        option.value = device.deviceId;
+        option.textContent = device.label || `Dispositivo ${index + 1}`;
+        select.appendChild(option);
+    });
+    const toSelect = selectedDeviceId ?? previousValue;
+    if (toSelect && devices.some((d) => d.deviceId === toSelect)) {
+        select.value = toSelect;
+    }
+}
+
+async function populateDeviceSelectors() {
+    const { inputs, outputs } = await listAudioDevices();
+    fillSelect(micSelect, inputs, localStream?.getAudioTracks()[0]?.getSettings().deviceId);
+
+    if (supportsAudioOutputSelection()) {
+        fillSelect(speakerSelect, outputs, currentSinkId);
+    } else {
+        speakerSelect.disabled = true;
+        speakerSelect.title = 'Troca de saída de áudio não suportada neste navegador';
+        const option = document.createElement('option');
+        option.textContent = 'não suportado';
+        speakerSelect.innerHTML = '';
+        speakerSelect.appendChild(option);
+    }
+}
+
+micSelect.addEventListener('change', async () => {
+    const deviceId = micSelect.value;
+    if (!deviceId) {
+        return;
+    }
+    try {
+        const newTrack = await getAudioTrackForDevice(deviceId);
+        const oldTrack = localStream.getAudioTracks()[0];
+        if (oldTrack) {
+            localStream.removeTrack(oldTrack);
+            oldTrack.stop();
+        }
+        newTrack.enabled = micEnabled;
+        localStream.addTrack(newTrack);
+        peerMesh?.replaceAudioTrack(newTrack);
+    } catch (error) {
+        console.error('Falha ao trocar de microfone', error);
+    }
+});
+
+speakerSelect.addEventListener('change', async () => {
+    currentSinkId = speakerSelect.value;
+    const videos = videoGrid.querySelectorAll('video');
+    for (const video of videos) {
+        await applySinkId(video);
+    }
+});
 
 micBtn.addEventListener('click', () => {
     if (!localStream) return;
