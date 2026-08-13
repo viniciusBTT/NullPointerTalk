@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="pt-br" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title th:text="${room.name()} + ' · NullPointerTalk'">Sala · NullPointerTalk</title>
+    <link rel="stylesheet" th:href="@{/css/app.css}">
+</head>
+<body class="room-body"
+      th:attr="data-room-id=${room.id()},data-room-name=${room.name()},data-ice-server-url=${iceServerUrl}">
+    <header class="room-header">
+        <a href="/" class="btn btn--ghost">← Salas</a>
+        <h1>
+            <span th:text="${room.icon()}">💬</span>
+            <span th:text="${room.name()}">Geral</span>
+        </h1>
+        <span id="connection-status" class="connection-status">conectando…</span>
+    </header>
+
+    <main id="video-grid" class="video-grid">
+        <!-- tiles de vídeo são inseridos aqui via room.js -->
+    </main>
+
+    <footer class="control-bar">
+        <button id="toggle-mic" class="control-btn" type="button" title="Mutar/desmutar microfone">🎤</button>
+        <button id="toggle-camera" class="control-btn" type="button" title="Ligar/desligar câmera">📷</button>
+        <button id="toggle-screen" class="control-btn" type="button" title="Compartilhar tela">🖥️</button>
+        <button id="leave-room" class="control-btn control-btn--danger" type="button" title="Sair da sala">📞</button>
+    </footer>
+
+    <script type="module" th:src="@{/js/room.js}"></script>
+</body>
+</html>

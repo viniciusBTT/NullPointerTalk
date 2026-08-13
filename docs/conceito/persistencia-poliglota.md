@@ -24,7 +24,7 @@ Ter os dois no mesmo projeto é uma forma prática de sentir na mão quando cada
 
 - `spring-boot-starter-data-jpa` + `org.postgresql:postgresql` → entidades `Room`/`Participant`, repositórios `JpaRepository`.
 - `spring-boot-starter-data-mongodb` → documento `ChatMessage`, repositório `MongoRepository`.
-- Ambos configurados em `backend/src/main/resources/application.properties` (`spring.datasource.*` para Postgres, `spring.data.mongodb.uri` para Mongo).
+- Ambos configurados em `src/main/resources/application.properties` (`spring.datasource.*` para Postgres, `spring.data.mongodb.uri` para Mongo).
 - Sobem localmente via `docker-compose.yml` na raiz do projeto.
 
 ## Referências

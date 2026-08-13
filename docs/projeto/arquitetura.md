@@ -4,38 +4,40 @@
 
 ```
 NullPointerTalk/
-  backend/     Spring Boot (Maven, Java 21)
-  frontend/    React + Vite + TypeScript
-  docker-compose.yml   Postgres + MongoDB (infra local)
+  pom.xml
+  src/main/java/com/nullpointertalk/     código Java
+  src/main/resources/
+    templates/   Thymeleaf (home.html, room.html)
+    static/      CSS + JS puro (sem build, sem npm)
+  docker-compose.yml   Postgres + MongoDB (infra local, usada a partir da fase do chat)
   docs/
     conceito/   explicações dos conceitos usados, com referências
     projeto/    este conjunto de docs, sobre o código em si
 ```
 
+Repositório único (sem subpasta `backend/`, sem frontend separado): o Spring Boot roda direto na raiz, renderiza as páginas com Thymeleaf e serve o JS puro que roda no navegador. Ver [`docs/projeto/backend.md`](backend.md) e [`docs/projeto/frontend.md`](frontend.md).
+
 ## Como as peças se conectam
 
 ```
-┌─────────────────────────┐         WebSocket puro          ┌──────────────────────────┐
-│  Frontend (React)       │ ───── sinalização WebRTC ─────► │  Backend (Spring Boot)   │
-│                          │ ◄──── offer/answer/ICE ──────── │                          │
-│  ┌────────────────────┐ │                                 │  SignalingWebSocketHandler│
-│  │ RTCPeerConnection   │ │         STOMP + SockJS          │  StompConfig + ChatCtrl   │
-│  │ (mesh P2P)          │ │ ───── mensagens de chat ──────► │                          │
-│  └────────────────────┘ │ ◄──── broadcast /topic/room ──── │                          │
-│           │              │                                 │           │               │
-│           │ mídia direta │                                 │      ┌────┴────┐          │
-│           ▼              │                                 │      ▼         ▼          │
-│  ┌────────────────────┐ │                                 │  Postgres    MongoDB      │
-│  │ Outro navegador     │ │                                 │  (Room,      (ChatMessage)│
-│  │ (peer remoto)       │ │                                 │   Participant)            │
-│  └────────────────────┘ │                                 │                          │
-└─────────────────────────┘                                 └──────────────────────────┘
+┌───────────────────────────────────────────┐         WebSocket puro          ┌──────────────────────────┐
+│  Navegador A                               │ ───── sinalização WebRTC ─────► │  Backend (Spring Boot)   │
+│  (home.html/room.html + JS puro)           │ ◄──── offer/answer/ICE ──────── │                          │
+│                                             │                                 │  SignalingWebSocketHandler│
+│  ┌────────────────────┐                    │                                 │  HomeController           │
+│  │ RTCPeerConnection   │                    │                                 │  RoomController           │
+│  │ (mesh P2P)          │                    │                                 │  RoomCatalog (salas fixas)│
+│  └────────────────────┘                    │                                 │                          │
+│           │ mídia direta (áudio/vídeo/tela) │                                 │                          │
+│           ▼                                │                                 │                          │
+│  ┌────────────────────┐                    │                                 │                          │
+│  │ Navegador B         │                    │                                 │                          │
+│  │ (peer remoto)       │                    │                                 │                          │
+│  └────────────────────┘                    │                                 │                          │
+└───────────────────────────────────────────┘                                 └──────────────────────────┘
 ```
 
-Dois canais de comunicação em tempo real, propositalmente com tecnologias diferentes para fins de estudo:
-
-1. **Sinalização WebRTC** — WebSocket puro (`/ws/signaling`). Só transporta offer/answer/ICE candidates entre os navegadores da mesma sala. Ver [`docs/conceito/sinalizacao-websocket.md`](../conceito/sinalizacao-websocket.md).
-2. **Chat** — STOMP sobre WebSocket (`/ws/chat`), com broadcast por sala via tópicos. Ver [`docs/conceito/stomp.md`](../conceito/stomp.md).
+**Sinalização WebRTC** — WebSocket puro (`/ws/signaling`). Só transporta offer/answer/ICE candidates entre os navegadores da mesma sala, direcionado por `peerId` (campo `to`). Ver [`docs/conceito/sinalizacao-websocket.md`](../conceito/sinalizacao-websocket.md).
 
 A mídia (áudio/vídeo/tela) trafega **direto entre os navegadores** depois que a sinalização termina — o backend nunca vê esses bytes. Ver [`docs/conceito/webrtc.md`](../conceito/webrtc.md).
 
@@ -44,16 +46,22 @@ A mídia (áudio/vídeo/tela) trafega **direto entre os navegadores** depois que
 Decisões tomadas para maximizar aprendizado, documentadas em detalhe em `docs/conceito/`:
 
 - **Mesh P2P** em vez de SFU — expõe os fundamentos do WebRTC sem infraestrutura de mídia externa ao Java/Spring.
-- **WebSocket puro** para sinalização e **STOMP** para chat — mesmo problema (rotear mensagens entre clientes conectados), duas soluções diferentes, lado a lado, pra comparar.
-- **Postgres + MongoDB** — persistência poliglota: relacional para dados estruturados (Room/Participant), documento para o histórico de chat.
+- **WebSocket puro** para sinalização, sem abstração — mostra o ciclo de vida completo de uma sessão WebSocket (conectar, registrar, rotear, desconectar).
+- **Thymeleaf + JS puro** em vez de um SPA (React/Vite) — projeto de laboratório, sem necessidade de build/roteamento client-side/estado global para uma tela de vídeo com salas fixas. Um módulo Maven só, sem CORS a configurar.
+- **Salas fixas no código** (fase 1) — sem CRUD, sem persistência ainda; simplifica o primeiro corte funcional.
 - **STUN público** por enquanto — suficiente para testes em localhost/mesma rede.
 
-## Fase 2 (não implementada ainda)
+## Próxima fase (não implementada ainda)
+
+- **Chat de texto** — STOMP sobre WebSocket (`/ws/chat`, com broadcast por sala via tópicos), comparando com a sinalização em WebSocket puro. Ver [`docs/conceito/stomp.md`](../conceito/stomp.md).
+- **Persistência poliglota** — Postgres para dados relacionais (Room/Participant, se fizer sentido) e MongoDB para o histórico de chat. Ver [`docs/conceito/persistencia-poliglota.md`](../conceito/persistencia-poliglota.md). A autoconfiguração de JPA/Mongo está desligada em `application.properties` até essa fase entrar (ver [`docs/projeto/backend.md`](backend.md)).
+
+## Fase 3 (não implementada ainda)
 
 Quando o projeto for hospedado numa VPS para testar com pessoas em redes diferentes (NAT real entre as pontas):
 
 - Subir um `coturn` (servidor TURN próprio) e apontar `webrtc.ice-servers` (em `application.properties`) para ele.
-- Criar Dockerfiles do backend e do frontend para deploy.
+- Criar Dockerfile do backend para deploy.
 
 ## Ver também
 
