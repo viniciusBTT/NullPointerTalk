@@ -69,3 +69,9 @@ Quando o chat (STOMP + MongoDB) entrar, vai precisar de:
 ```bash
 docker compose up -d   # Postgres + Mongo (na raiz do monorepo)
 ```
+
+## Testando via túnel (ngrok e afins)
+
+`server.forward-headers-strategy=native` em `application.properties` é necessário pra isso funcionar. Sem ele, o handshake do WebSocket (`/ws/signaling`) é rejeitado com **403** atrás de qualquer túnel HTTPS (ngrok, cloudflared etc.): o navegador manda `Origin: https://...`, mas o Tomcat via o request como `http` (o túnel fala HTTP puro com o backend local) — e o check de mesma-origem do Spring para WebSocket compara esquema **e** host, não só o host. Com essa propriedade, o Tomcat passa a confiar no `X-Forwarded-Proto`/`X-Forwarded-Host` que o túnel injeta e enxerga o esquema certo. Confirmado via handshake manual simulando os headers que o ngrok injeta (ver histórico do projeto) — origens diferentes continuam corretamente rejeitadas com 403.
+
+Isso resolve só a parte de sinalização/página. A mídia (áudio/vídeo/tela) continua sendo **P2P direto entre os navegadores** — o túnel não participa disso. Com dois participantes em redes diferentes, só STUN público pode não bastar dependendo do tipo de NAT de cada lado (comum em NAT simétrico/firewall corporativo); se a chamada não conectar, a próxima etapa é subir um TURN (`coturn`), já previsto na fase 3.
