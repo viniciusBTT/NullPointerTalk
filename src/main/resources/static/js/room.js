@@ -121,6 +121,7 @@ screenBtn.addEventListener('click', async () => {
     }
     const screenTrack = screenStream.getVideoTracks()[0];
     peerMesh.replaceVideoTrack(screenTrack);
+    upsertTile('local', screenStream, `${name} (compartilhando tela)`, true);
     screenTrack.addEventListener('ended', stopScreenShare);
     screenBtn.classList.add('is-active');
 });
@@ -132,6 +133,7 @@ function stopScreenShare() {
     stopStream(screenStream);
     screenStream = null;
     peerMesh?.replaceVideoTrack(cameraTrack);
+    upsertTile('local', localStream, `${name} (você)`, true);
     screenBtn.classList.remove('is-active');
 }
 
