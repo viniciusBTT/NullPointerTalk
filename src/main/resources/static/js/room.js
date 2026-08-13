@@ -33,6 +33,7 @@ const screenBtn = document.getElementById('toggle-screen');
 const leaveBtn = document.getElementById('leave-room');
 const micSelect = document.getElementById('mic-select');
 const speakerSelect = document.getElementById('speaker-select');
+const enableAudioBtn = document.getElementById('enable-audio-btn');
 
 let localStream;
 let cameraTrack;
@@ -54,6 +55,23 @@ async function applySinkId(videoEl) {
         console.error('Falha ao trocar a saída de áudio', error);
     }
 }
+
+// Navegadores mobile (principalmente Chrome/Android) às vezes só autoplayam o <video>
+// remoto silenciando o áudio internamente, sem rejeitar a Promise do play() - por isso
+// o botão aparece de forma proativa ao chegar um peer remoto, não só quando play() falha.
+function tryPlay(video) {
+    const playResult = video.play();
+    if (playResult && typeof playResult.catch === 'function') {
+        playResult.catch(() => {
+            enableAudioBtn.classList.remove('hidden');
+        });
+    }
+}
+
+enableAudioBtn.addEventListener('click', () => {
+    videoGrid.querySelectorAll('video').forEach((video) => tryPlay(video));
+    enableAudioBtn.classList.add('hidden');
+});
 
 function upsertTile(tileId, stream, label, muted) {
     let tile = document.getElementById(`tile-${tileId}`);
@@ -78,6 +96,10 @@ function upsertTile(tileId, stream, label, muted) {
     video.srcObject = stream;
     tile.querySelector('.video-tile__name').textContent = label;
     applySinkId(video);
+    tryPlay(video);
+    if (tileId !== 'local') {
+        enableAudioBtn.classList.remove('hidden');
+    }
 }
 
 function removeTile(tileId) {
@@ -141,15 +163,13 @@ async function populateDeviceSelectors() {
     const { inputs, outputs } = await listAudioDevices();
     fillSelect(micSelect, inputs, localStream?.getAudioTracks()[0]?.getSettings().deviceId);
 
+    // A maioria dos navegadores mobile (Chrome/Safari Android e iOS) não implementa
+    // HTMLMediaElement.setSinkId - nesse caso é melhor esconder o seletor do que mostrar
+    // um dropdown desabilitado confuso.
     if (supportsAudioOutputSelection()) {
         fillSelect(speakerSelect, outputs, currentSinkId);
     } else {
-        speakerSelect.disabled = true;
-        speakerSelect.title = 'Troca de saída de áudio não suportada neste navegador';
-        const option = document.createElement('option');
-        option.textContent = 'não suportado';
-        speakerSelect.innerHTML = '';
-        speakerSelect.appendChild(option);
+        speakerSelect.closest('.device-select').classList.add('hidden');
     }
 }
 

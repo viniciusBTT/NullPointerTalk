@@ -211,6 +211,29 @@ button {
     color: var(--text-muted);
 }
 
+.enable-audio-btn {
+    position: fixed;
+    top: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 20;
+    border: none;
+    border-radius: 999px;
+    padding: 10px 20px;
+    font-size: 0.95rem;
+    color: #fff;
+    background: var(--accent);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+
+.enable-audio-btn:hover {
+    background: var(--accent-hover);
+}
+
+.enable-audio-btn.hidden {
+    display: none;
+}
+
 .video-grid {
     flex: 1;
     display: grid;
@@ -273,6 +296,10 @@ button {
 
 .device-select select:disabled {
     opacity: 0.5;
+}
+
+.device-select.hidden {
+    display: none;
 }
 
 .control-bar {
