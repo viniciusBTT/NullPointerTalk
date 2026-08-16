@@ -1,24 +1,45 @@
+const ICE_RESTART_COOLDOWN_MS = 5000;
+
 /**
  * Gerencia o mesh P2P: uma RTCPeerConnection por peer da sala.
  * O peer que acabou de entrar sempre inicia a oferta pros que já estavam lá
  * (evita oferta dupla/glare quando há mais de 2 participantes).
  */
 export class PeerMesh {
-    constructor({ signaling, iceServerUrl, localStream, onRemoteStream, onRemoteStreamRemoved }) {
+    constructor({
+        signaling,
+        iceServers,
+        localStream,
+        onRemoteStream,
+        onRemoteStreamRemoved,
+        onPeerJoined,
+        onPeerLeft,
+        onPeerStateChange,
+        onRemoteMediaState,
+        getLocalMediaState,
+    }) {
         this.signaling = signaling;
-        this.iceServers = [{ urls: iceServerUrl }];
+        this.iceServers = iceServers;
         this.localStream = localStream;
         this.onRemoteStream = onRemoteStream;
         this.onRemoteStreamRemoved = onRemoteStreamRemoved;
+        this.onPeerJoined = onPeerJoined;
+        this.onPeerLeft = onPeerLeft;
+        this.onPeerStateChange = onPeerStateChange;
+        this.onRemoteMediaState = onRemoteMediaState;
+        this.getLocalMediaState = getLocalMediaState;
         this.connections = new Map();
         this.names = new Map();
         this.pendingCandidates = new Map();
+        this.lastIceRestartAt = new Map();
 
         signaling.on('peers', (message) => this.handlePeers(message));
         signaling.on('offer', (message) => this.handleOffer(message));
         signaling.on('answer', (message) => this.handleAnswer(message));
         signaling.on('ice-candidate', (message) => this.handleIceCandidate(message));
+        signaling.on('peer-joined', (message) => this.handlePeerJoined(message));
         signaling.on('peer-left', (message) => this.handlePeerLeft(message));
+        signaling.on('media-state', (message) => this.handleMediaState(message));
     }
 
     async handlePeers(message) {
@@ -27,6 +48,7 @@ export class PeerMesh {
             const offer = await pc.createOffer();
             await pc.setLocalDescription(offer);
             this.signaling.send({ type: 'offer', to: peer.peerId, sdp: offer });
+            this.sendMediaStateTo(peer.peerId);
         }
     }
 
@@ -37,6 +59,7 @@ export class PeerMesh {
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
         this.signaling.send({ type: 'answer', to: message.from, sdp: answer });
+        this.sendMediaStateTo(message.from);
     }
 
     async handleAnswer(message) {
@@ -74,6 +97,10 @@ export class PeerMesh {
         this.pendingCandidates.delete(peerId);
     }
 
+    handlePeerJoined(message) {
+        this.onPeerJoined?.(message.peerId, message.name);
+    }
+
     handlePeerLeft(message) {
         const pc = this.connections.get(message.peerId);
         if (pc) {
@@ -82,7 +109,28 @@ export class PeerMesh {
         }
         this.names.delete(message.peerId);
         this.pendingCandidates.delete(message.peerId);
+        this.lastIceRestartAt.delete(message.peerId);
         this.onRemoteStreamRemoved(message.peerId);
+        this.onPeerLeft?.(message.peerId, message.name);
+    }
+
+    handleMediaState(message) {
+        this.onRemoteMediaState?.(message.from, message.audioEnabled, message.videoEnabled);
+    }
+
+    /** Manda meu estado atual de mic/câmera pra um peer específico (usado ao (re)conectar com ele). */
+    sendMediaStateTo(peerId) {
+        if (!this.getLocalMediaState) {
+            return;
+        }
+        this.signaling.send({ type: 'media-state', to: peerId, ...this.getLocalMediaState() });
+    }
+
+    /** Avisa todo mundo já conectado que meu mic/câmera mudou (track.enabled é só local, não chega no remoto sozinho). */
+    broadcastMediaState(state) {
+        this.connections.forEach((_pc, peerId) => {
+            this.signaling.send({ type: 'media-state', to: peerId, ...state });
+        });
     }
 
     createConnection(peerId, name) {
@@ -104,11 +152,41 @@ export class PeerMesh {
             this.onRemoteStream(peerId, event.streams[0], this.names.get(peerId));
         });
 
+        pc.addEventListener('iceconnectionstatechange', () => {
+            this.onPeerStateChange?.(peerId, pc.iceConnectionState);
+            // 'disconnected' costuma se autorrecuperar sozinho (soluço breve de rede);
+            // só reinicia ICE em 'failed', pra não fazer renegociação à toa.
+            if (pc.iceConnectionState === 'failed') {
+                this.attemptIceRestart(peerId);
+            }
+        });
+        pc.addEventListener('connectionstatechange', () => {
+            this.onPeerStateChange?.(peerId, pc.connectionState);
+        });
+
         this.connections.set(peerId, pc);
         return pc;
     }
 
-    /** Troca a track de vídeo em todas as conexões (usado pelo compartilhamento de tela). */
+    /** Reinicia a negociação ICE com um peer cuja conexão falhou (ex: troca de rede no meio da chamada). */
+    async attemptIceRestart(peerId) {
+        const lastAttempt = this.lastIceRestartAt.get(peerId) ?? 0;
+        if (performance.now() - lastAttempt < ICE_RESTART_COOLDOWN_MS) {
+            return; // evita restart em loop se o estado oscilar entre failed/disconnected
+        }
+        this.lastIceRestartAt.set(peerId, performance.now());
+
+        const pc = this.connections.get(peerId);
+        if (!pc) {
+            return;
+        }
+        pc.restartIce();
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+        this.signaling.send({ type: 'offer', to: peerId, sdp: offer });
+    }
+
+    /** Troca a track de vídeo em todas as conexões (usado pelo compartilhamento de tela e troca de câmera). */
     replaceVideoTrack(newTrack) {
         this.connections.forEach((pc) => {
             const sender = pc.getSenders().find((s) => s.track && s.track.kind === 'video');
@@ -118,7 +196,7 @@ export class PeerMesh {
         });
     }
 
-    /** Troca a track de áudio em todas as conexões (usado ao trocar de microfone). */
+    /** Troca a track de áudio em todas as conexões (usado ao trocar de microfone e ao mixar áudio da tela). */
     replaceAudioTrack(newTrack) {
         this.connections.forEach((pc) => {
             const sender = pc.getSenders().find((s) => s.track && s.track.kind === 'audio');
@@ -128,10 +206,16 @@ export class PeerMesh {
         });
     }
 
+    /** Fecha todas as conexões atuais sem mexer nos listeners de sinalização - usado ao reconectar o WebSocket. */
+    resetForReconnect() {
+        this.closeAll();
+    }
+
     closeAll() {
         this.connections.forEach((pc) => pc.close());
         this.connections.clear();
         this.names.clear();
         this.pendingCandidates.clear();
+        this.lastIceRestartAt.clear();
     }
 }

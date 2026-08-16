@@ -21,6 +21,17 @@ services:
     volumes:
       - mongo-data:/data/db
 
+  # TURN/STUN proprio (Fase 3) - so faz sentido subir na VPS, nao em dev local com ngrok.
+  # network_mode: host porque coturn precisa de uma faixa larga de portas UDP de relay;
+  # publicar cada porta individualmente numa rede bridge seria bem mais verboso pra um lab.
+  coturn:
+    image: coturn/coturn:latest
+    container_name: nullpointertalk-coturn
+    network_mode: host
+    volumes:
+      - ./coturn/turnserver.conf:/etc/coturn/turnserver.conf:ro
+    command: ["-c", "/etc/coturn/turnserver.conf"]
+
 volumes:
   postgres-data:
   mongo-data:

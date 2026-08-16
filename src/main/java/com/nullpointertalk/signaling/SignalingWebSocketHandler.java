@@ -97,6 +97,7 @@ public class SignalingWebSocketHandler extends TextWebSocketHandler {
     public void afterConnectionClosed(WebSocketSession session, CloseStatus status) throws Exception {
         String roomId = (String) session.getAttributes().get("roomId");
         String peerId = (String) session.getAttributes().get("peerId");
+        String name = (String) session.getAttributes().get("name");
         if (roomId == null || peerId == null) {
             return;
         }
@@ -111,6 +112,7 @@ public class SignalingWebSocketHandler extends TextWebSocketHandler {
         ObjectNode leftMessage = objectMapper.createObjectNode();
         leftMessage.put("type", "peer-left");
         leftMessage.put("peerId", peerId);
+        leftMessage.put("name", name);
         broadcast(room, leftMessage);
 
         if (room.isEmpty()) {

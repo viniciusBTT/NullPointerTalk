@@ -9,6 +9,9 @@
     --accent-hover: #4752c4;
     --danger: #ed4245;
     --danger-hover: #c93b3d;
+    --status-ok: #3ba55d;
+    --status-warn: #faa61a;
+    --status-bad: var(--danger);
 }
 
 * {
@@ -341,4 +344,255 @@ button {
 
 .control-btn--danger:hover {
     background: var(--danger-hover);
+}
+
+.control-btn:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+
+/* Loading inicial (getUserMedia + sinalização) */
+
+.room-loading {
+    position: fixed;
+    inset: 0;
+    z-index: 30;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    background: rgba(0, 0, 0, 0.6);
+    color: var(--text);
+}
+
+.room-loading.hidden {
+    display: none;
+}
+
+.room-loading__spinner {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    border: 3px solid var(--bg-elevated);
+    border-top-color: var(--accent);
+    animation: room-loading-spin 0.8s linear infinite;
+}
+
+@keyframes room-loading-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* Espelhamento do vídeo local (câmera, não durante compartilhamento de tela) */
+
+.video-tile--mirror video {
+    transform: scaleX(-1);
+}
+
+/* Indicador de "falando agora" */
+
+.video-tile--speaking {
+    box-shadow: 0 0 0 3px var(--accent) inset;
+}
+
+/* Badges de mic/câmera desligados sobre o tile */
+
+.video-tile__badges {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    display: flex;
+    gap: 4px;
+}
+
+.badge {
+    font-size: 0.9rem;
+    background: rgba(0, 0, 0, 0.6);
+    border-radius: 4px;
+    padding: 2px 6px;
+}
+
+.badge.hidden {
+    display: none;
+}
+
+/* Indicador de estado da conexão por participante (não substitui o status global da sinalização) */
+
+.video-tile__status-dot {
+    position: absolute;
+    bottom: 8px;
+    right: 8px;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: transparent;
+}
+
+.video-tile__status-dot--ok {
+    background: var(--status-ok);
+}
+
+.video-tile__status-dot--warn {
+    background: var(--status-warn);
+}
+
+.video-tile__status-dot--bad {
+    background: var(--status-bad);
+}
+
+/* Toasts (entrada/saída de participantes) e banners (erros persistentes) */
+
+.toast-container {
+    position: fixed;
+    top: 16px;
+    right: 16px;
+    z-index: 40;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-width: 320px;
+}
+
+.toast {
+    background: var(--bg-elevated);
+    color: var(--text);
+    padding: 10px 14px;
+    border-radius: 6px;
+    font-size: 0.85rem;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+
+.toast--error {
+    border-left: 3px solid var(--danger);
+}
+
+.banner-container {
+    position: fixed;
+    top: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 40;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: min(420px, calc(100vw - 32px));
+}
+
+.banner {
+    background: var(--bg-sidebar);
+    color: var(--text);
+    padding: 12px 16px;
+    border-radius: 8px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 0.9rem;
+}
+
+.banner span {
+    flex: 1;
+}
+
+.banner__action {
+    flex-shrink: 0;
+    padding: 6px 12px;
+    font-size: 0.85rem;
+}
+
+.banner__close {
+    flex-shrink: 0;
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 1.1rem;
+    line-height: 1;
+    padding: 0 4px;
+}
+
+.banner__close:hover {
+    color: var(--text);
+}
+
+/* Responsivo */
+
+@media (max-width: 768px) {
+    .app-shell {
+        flex-direction: column;
+        height: auto;
+        min-height: 100vh;
+    }
+
+    .server-rail {
+        display: none;
+    }
+
+    .channel-sidebar {
+        width: auto;
+        padding: 8px;
+    }
+
+    .channel-list {
+        display: flex;
+        gap: 4px;
+        overflow-x: auto;
+    }
+
+    .channel-sidebar__title {
+        display: none;
+    }
+
+    .video-grid {
+        grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    }
+
+    .device-bar {
+        flex-wrap: wrap;
+    }
+}
+
+@media (max-width: 480px) {
+    .video-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .room-header {
+        flex-wrap: wrap;
+        row-gap: 4px;
+    }
+
+    .room-header h1 {
+        font-size: 1rem;
+    }
+
+    .control-bar {
+        gap: 10px;
+        padding: 12px;
+    }
+
+    .control-btn {
+        width: 44px;
+        height: 44px;
+        font-size: 1.1rem;
+    }
+
+    .device-bar {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .device-select select {
+        max-width: none;
+    }
+
+    .toast-container,
+    .banner-container {
+        max-width: none;
+        width: calc(100vw - 32px);
+        left: 16px;
+        right: 16px;
+        transform: none;
+    }
 }

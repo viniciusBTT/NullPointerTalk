@@ -49,11 +49,24 @@ O processo de achar um caminho de rede que funcione entre os dois peers, testand
 - **STUN**: servidor que responde "seu IP público visto de fora é X, porta Y". Só ajuda a *descobrir* o endereço — não participa da chamada depois. Leve, geralmente público e gratuito (ex: `stun.l.google.com:19302`).
 - **TURN**: quando STUN não é suficiente (NAT muito restritivo, firewall corporativo), o TURN vira um **relay** — toda a mídia passa por ele. Funciona sempre, mas custa banda do servidor (ele fica no meio de cada pacote).
 
-Neste projeto usamos só STUN público por enquanto (testes em localhost/mesma rede). Quando for para uma VPS testar com pessoas em redes diferentes, um TURN próprio (`coturn`) provavelmente será necessário — ver `docs/projeto/arquitetura.md`.
+Neste projeto usamos STUN público sempre, e um TURN próprio (`coturn`) entra na Fase 3, quando o app é hospedado numa VPS para testar com pessoas em redes diferentes — ver `docs/projeto/arquitetura.md`.
+
+### TURN com credenciais de curta duração
+
+Em vez de embutir um usuário/senha fixos do TURN no HTML (visível a qualquer um que inspecionar a página), o coturn é configurado com `--use-auth-secret`, o esquema conhecido como "TURN REST API" (draft-uberti-behave-turn-rest): cliente e servidor compartilham um segredo (`static-auth-secret` no coturn, `webrtc.turn.secret` no backend); o backend gera, a cada carregamento de `room.html`, um `username` (um timestamp de expiração) e um `credential` = `HMAC-SHA1(segredo, username)` em Base64 (`TurnCredentialsService`). O coturn recalcula o mesmo HMAC ao receber uma tentativa de uso do relay e valida — sem precisar guardar nenhuma credencial em banco, e sem a credencial funcionar depois de expirada.
+
+## Reconexão e ICE restart
+
+Duas coisas diferentes podem cair numa chamada: o **WebSocket de sinalização** (a conexão com o backend) e uma **RTCPeerConnection** individual (a conexão direta com um peer).
+
+- **Sinalização**: `signaling.js` reconecta sozinho com backoff exponencial se o WebSocket cair sem ter sido um `close()` intencional. Como o backend trata toda nova conexão como uma sessão nova (manda a lista de peers de novo, ver `docs/conceito/sinalizacao-websocket.md`), o cliente só precisa descartar as `RTCPeerConnection` antigas antes de processar essa lista de novo — senão o mesh duplicaria conexões.
+- **RTCPeerConnection**: `iceConnectionState` passando para `failed` (não `disconnected`, que costuma se recuperar sozinho) dispara `pc.restartIce()` seguido de uma nova oferta SDP pelo canal de sinalização já existente — uma renegociação, não uma reconexão do zero.
 
 ## Compartilhamento de tela
 
 Usa a mesma `RTCPeerConnection` já estabelecida. Ao invés de renegociar do zero, troca-se a track de vídeo com `sender.replaceTrack(novaTrackDaTela)`, onde a nova track vem de `getDisplayMedia()` em vez de `getUserMedia()`.
+
+Quando o compartilhamento inclui áudio do sistema/aba, ele não *substitui* o microfone — as duas tracks de áudio (mic + sistema) são mixadas numa só via Web Audio API (`AudioContext` → dois `MediaStreamAudioSourceNode` → um `MediaStreamAudioDestinationNode` compartilhado), porque um sender de áudio da `RTCPeerConnection` só carrega uma track por vez. O resultado da mixagem é o que vai pro `replaceTrack`.
 
 ## Referências
 

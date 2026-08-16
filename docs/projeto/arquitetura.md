@@ -56,12 +56,15 @@ Decisões tomadas para maximizar aprendizado, documentadas em detalhe em `docs/c
 - **Chat de texto** — STOMP sobre WebSocket (`/ws/chat`, com broadcast por sala via tópicos), comparando com a sinalização em WebSocket puro. Ver [`docs/conceito/stomp.md`](../conceito/stomp.md).
 - **Persistência poliglota** — Postgres para dados relacionais (Room/Participant, se fizer sentido) e MongoDB para o histórico de chat. Ver [`docs/conceito/persistencia-poliglota.md`](../conceito/persistencia-poliglota.md). A autoconfiguração de JPA/Mongo está desligada em `application.properties` até essa fase entrar (ver [`docs/projeto/backend.md`](backend.md)).
 
-## Fase 3 (não implementada ainda)
+## Fase 3 — TURN próprio (VPS)
 
-Quando o projeto for hospedado numa VPS para testar com pessoas em redes diferentes (NAT real entre as pontas):
+Quando o projeto é hospedado numa VPS para testar com pessoas em redes diferentes (NAT real entre as pontas):
 
-- Subir um `coturn` (servidor TURN próprio) e apontar `webrtc.ice-servers` (em `application.properties`) para ele.
-- Criar Dockerfile do backend para deploy.
+- `coturn` sobe como serviço no `docker-compose.yml`, com `network_mode: host` (faixa de portas UDP de relay) e config em `coturn/turnserver.conf`.
+- `TurnCredentialsService` (backend) gera credenciais de curta duração via HMAC-SHA1 (`webrtc.turn.secret` compartilhado com o coturn) a cada renderização de `room.html` — em vez de usuário/senha fixos embutidos no HTML. Ver [`docs/conceito/webrtc.md`](../conceito/webrtc.md#turn-com-credenciais-de-curta-duração).
+- `RoomController` monta a lista de `iceServers` (STUN sempre, TURN só se `webrtc.turn.urls` estiver configurado) e serializa como `data-ice-servers` no template, consumido por `peers.js`.
+- Perfil `vps` (`application-vps.properties`) liga o TURN; sem esse perfil ativo (dev local/ngrok), só STUN público é usado.
+- Dockerfile do backend para deploy — ainda não implementado.
 
 ## Ver também
 
