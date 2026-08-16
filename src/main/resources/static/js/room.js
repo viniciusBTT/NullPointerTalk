@@ -51,7 +51,7 @@ let mixedAudio = null; // { track, stop() } - só existe enquanto compartilha te
 let peerMesh;
 let signalingSocket;
 let micEnabled = true;
-let cameraEnabled = true;
+let cameraEnabled = false; // câmera começa desligada - usuário liga manualmente ao entrar
 let leaving = false;
 let hasConnectedBefore = false;
 let currentSinkId = null;
@@ -209,7 +209,12 @@ async function init() {
 
     cameraTrack = localStream.getVideoTracks()[0];
     micTrack = localStream.getAudioTracks()[0];
+    // Captura a câmera junto (pra não pedir permissão de novo ao ligar), mas já entra
+    // desabilitada - só manda vídeo pros remotos quando o usuário ligar manualmente.
+    toggleVideoTrack(localStream, cameraEnabled);
     upsertTile('local', localStream, `${name} (você)`, { muted: true, mirror: true });
+    cameraBtn.classList.toggle('is-off', !cameraEnabled);
+    setTileBadges('local', getLocalMediaState());
 
     signalingSocket = new SignalingSocket({ roomId, peerId, name });
     signalingSocket.onOpen(() => {
