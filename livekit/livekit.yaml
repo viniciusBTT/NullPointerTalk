@@ -18,8 +18,9 @@ turn:
 
 # Credenciais que o backend usa pra assinar os tokens de acesso (ver
 # LiveKitTokenService, livekit.api-key/livekit.api-secret no application*.properties).
-# O valor abaixo funciona pronto em dev local. Ao subir na VPS, troque por um
-# segredo proprio (>= 32 caracteres) e replique o mesmo par em
-# application-vps.properties - os dois precisam bater, igual TURN/coturn antes.
+# Agora vem do .env (LIVEKIT_API_KEY/LIVEKIT_API_SECRET) via env var LIVEKIT_KEYS
+# no docker-compose.yml, que sobrepoe o "keys:" abaixo - nao precisa editar aqui.
+# Ao subir na VPS, troque os valores no .env (>= 32 caracteres) e replique o
+# mesmo par em application-vps.properties - os dois precisam bater.
 keys:
   devkey: devsecret_local_apenas_para_desenvolvimento_32

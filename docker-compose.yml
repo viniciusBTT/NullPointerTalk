@@ -4,6 +4,9 @@ services:
     image: livekit/livekit-server:latest
     container_name: nullpointertalk-livekit
     network_mode: host
+    environment:
+      # Sobrepõe o "keys:" do livekit.yaml (LiveKit lê essa env var por cima do arquivo).
+      LIVEKIT_KEYS: "${LIVEKIT_API_KEY}: ${LIVEKIT_API_SECRET}"
     volumes:
       - ./livekit/livekit.yaml:/etc/livekit.yaml:ro
     command: ["--config", "/etc/livekit.yaml"]
@@ -14,9 +17,9 @@ services:
     image: postgres:16-alpine
     container_name: nullpointertalk-postgres
     environment:
-      POSTGRES_DB: nullpointertalk
-      POSTGRES_USER: nullpointertalk
-      POSTGRES_PASSWORD: nullpointertalk
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     ports:
       - "5432:5432"
     volumes:
