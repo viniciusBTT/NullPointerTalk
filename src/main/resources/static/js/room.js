@@ -446,7 +446,12 @@ leaveBtn.addEventListener('click', () => {
     if (mixedAudio) mixedAudio.stop();
     if (screenStream) stopStream(screenStream);
     if (localStream) stopStream(localStream);
-    window.location.href = '/';
+    // Pequeno atraso antes de navegar: em algumas combinações de SO/driver a câmera não é
+    // liberada instantaneamente após track.stop(), e uma navegação imediata pode fazer a
+    // próxima getUserMedia (ao entrar na próxima sala) falhar por "dispositivo não encontrado".
+    setTimeout(() => {
+        window.location.href = '/';
+    }, 150);
 });
 
 window.addEventListener('beforeunload', () => {

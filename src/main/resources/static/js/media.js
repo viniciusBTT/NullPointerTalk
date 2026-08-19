@@ -14,11 +14,24 @@ function friendlyMediaError(error) {
     return new Error(message, { cause: error });
 }
 
+// Ao sair de uma sala paramos as tracks (stopStream) e navegamos de volta pra home logo em
+// seguida - em algumas combinações de SO/driver de webcam a liberação do dispositivo não é
+// instantânea, e a próxima getUserMedia (ex: entrando em outra sala na sequência) pode falhar
+// com "não encontrado"/"em uso" por uma fração de segundo. Por isso essas duas tentamos de novo
+// com um pequeno atraso antes de desistir e mostrar erro pro usuário.
+const RETRYABLE_ERRORS = new Set(['NotReadableError', 'NotFoundError']);
+const RETRY_DELAYS_MS = [400, 900];
+
 export async function getLocalMedia() {
-    try {
-        return await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
-    } catch (error) {
-        throw friendlyMediaError(error);
+    for (let attempt = 0; ; attempt++) {
+        try {
+            return await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
+        } catch (error) {
+            if (!RETRYABLE_ERRORS.has(error.name) || attempt >= RETRY_DELAYS_MS.length) {
+                throw friendlyMediaError(error);
+            }
+            await new Promise((resolve) => setTimeout(resolve, RETRY_DELAYS_MS[attempt]));
+        }
     }
 }
 

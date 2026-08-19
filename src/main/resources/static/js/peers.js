@@ -32,6 +32,11 @@ export class PeerMesh {
         this.names = new Map();
         this.pendingCandidates = new Map();
         this.lastIceRestartAt = new Map();
+        // Track "atual" de saída, separada de localStream: quando alguém já está
+        // compartilhando tela (ou com áudio mixado) e um novo peer entra no meio, a nova
+        // RTCPeerConnection precisa começar já com a track ativa, não com a câmera/mic original.
+        this.currentAudioTrack = localStream.getAudioTracks()[0] ?? null;
+        this.currentVideoTrack = localStream.getVideoTracks()[0] ?? null;
 
         signaling.on('peers', (message) => this.handlePeers(message));
         signaling.on('offer', (message) => this.handleOffer(message));
@@ -140,7 +145,15 @@ export class PeerMesh {
         this.names.set(peerId, name);
 
         const pc = new RTCPeerConnection({ iceServers: this.iceServers });
-        this.localStream.getTracks().forEach((track) => pc.addTrack(track, this.localStream));
+        // Usa a track atual (this.currentVideoTrack/currentAudioTrack), não localStream.getTracks()
+        // direto - senão um peer que entra no meio de um compartilhamento de tela receberia a
+        // câmera antiga em vez do que todo mundo já está vendo.
+        if (this.currentAudioTrack) {
+            pc.addTrack(this.currentAudioTrack, this.localStream);
+        }
+        if (this.currentVideoTrack) {
+            pc.addTrack(this.currentVideoTrack, this.localStream);
+        }
 
         pc.addEventListener('icecandidate', (event) => {
             if (event.candidate) {
@@ -188,6 +201,7 @@ export class PeerMesh {
 
     /** Troca a track de vídeo em todas as conexões (usado pelo compartilhamento de tela e troca de câmera). */
     replaceVideoTrack(newTrack) {
+        this.currentVideoTrack = newTrack;
         this.connections.forEach((pc) => {
             const sender = pc.getSenders().find((s) => s.track && s.track.kind === 'video');
             if (sender) {
@@ -198,6 +212,7 @@ export class PeerMesh {
 
     /** Troca a track de áudio em todas as conexões (usado ao trocar de microfone e ao mixar áudio da tela). */
     replaceAudioTrack(newTrack) {
+        this.currentAudioTrack = newTrack;
         this.connections.forEach((pc) => {
             const sender = pc.getSenders().find((s) => s.track && s.track.kind === 'audio');
             if (sender) {
