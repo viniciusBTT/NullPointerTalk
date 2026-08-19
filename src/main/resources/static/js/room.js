@@ -1,26 +1,18 @@
-import { SignalingSocket } from './signaling.js';
+import { Room, RoomEvent, Track, ConnectionQuality } from './vendor/livekit-client.esm.min.js';
 import {
     getLocalMedia,
-    toggleAudioTrack,
-    toggleVideoTrack,
     stopStream,
     listAudioDevices,
     listVideoDevices,
-    getAudioTrackForDevice,
-    getVideoTrackForDevice,
     supportsAudioOutputSelection,
 } from './media.js';
 import { getScreenStream } from './screenshare.js';
-import { PeerMesh } from './peers.js';
 import { showToast, showBanner } from './ui-feedback.js';
-import { audioActivityMonitor } from './audio-level.js';
-import { mixAudioTracks } from './audio-mixer.js';
 
 const USERNAME_KEY = 'npt.username';
 
 const body = document.body;
 const roomId = body.dataset.roomId;
-const iceServers = JSON.parse(body.dataset.iceServers);
 
 const name = localStorage.getItem(USERNAME_KEY);
 if (!name) {
@@ -28,7 +20,7 @@ if (!name) {
     throw new Error('Nome não definido, redirecionando para a home');
 }
 
-const peerId = crypto.randomUUID();
+const identity = crypto.randomUUID();
 
 const videoGrid = document.getElementById('video-grid');
 const connectionStatus = document.getElementById('connection-status');
@@ -43,19 +35,19 @@ const cameraSelect = document.getElementById('camera-select');
 const enableAudioBtn = document.getElementById('enable-audio-btn');
 const controlButtons = [micBtn, cameraBtn, screenBtn];
 
-let localStream;
-let cameraTrack;
+let room;
+let localStream; // captura combinada (1 só permissão) - mic vai publicado, câmera fica só "quente" até ligar
 let micTrack;
+let cameraTrack;
 let screenStream = null;
-let mixedAudio = null; // { track, stop() } - só existe enquanto compartilha tela com áudio do sistema
-let peerMesh;
-let signalingSocket;
 let micEnabled = true;
 let cameraEnabled = false; // câmera começa desligada - usuário liga manualmente ao entrar
 let leaving = false;
-let hasConnectedBefore = false;
-let currentSinkId = null;
-let dismissReconnectBanner = null;
+let focusedTileId = null;
+
+// Última track de vídeo (câmera OU tela) efetivamente exibida em cada tile - evita anexar
+// duas tracks de vídeo simultâneas no mesmo <video> (só a primeira seria renderizada).
+const attachedVideoTracks = new Map();
 
 function setControlsEnabled(enabled) {
     controlButtons.forEach((btn) => {
@@ -63,20 +55,9 @@ function setControlsEnabled(enabled) {
     });
 }
 
-async function applySinkId(videoEl) {
-    if (!currentSinkId || typeof videoEl.setSinkId !== 'function') {
-        return;
-    }
-    try {
-        await videoEl.setSinkId(currentSinkId);
-    } catch (error) {
-        console.error('Falha ao trocar a saída de áudio', error);
-    }
-}
-
 // Navegadores mobile (principalmente Chrome/Android) às vezes só autoplayam o <video>
 // remoto silenciando o áudio internamente, sem rejeitar a Promise do play() - por isso
-// o botão aparece de forma proativa ao chegar um peer remoto, não só quando play() falha.
+// o botão aparece de forma proativa ao chegar mídia remota, não só quando play() falha.
 function tryPlay(video) {
     const playResult = video.play();
     if (playResult && typeof playResult.catch === 'function') {
@@ -91,63 +72,72 @@ enableAudioBtn.addEventListener('click', () => {
     enableAudioBtn.classList.add('hidden');
 });
 
-/**
- * `audioStream` é opcional e serve pro tile local durante compartilhamento de tela:
- * o vídeo exibido é o da tela (`stream`), mas o indicador de "falando" continua
- * monitorando o microfone (`localStream`), não o áudio do sistema.
- */
-function upsertTile(tileId, stream, label, { muted, mirror = false, audioStream } = {}) {
+function ensureTile(tileId, label, { local = false } = {}) {
     let tile = document.getElementById(`tile-${tileId}`);
-    if (!tile) {
-        tile = document.createElement('div');
-        tile.className = 'video-tile';
-        tile.id = `tile-${tileId}`;
-
-        const video = document.createElement('video');
-        video.autoplay = true;
-        video.playsInline = true;
-        video.muted = muted;
-        tile.appendChild(video);
-
-        const placeholder = document.createElement('span');
-        placeholder.className = 'video-tile__placeholder';
-        tile.appendChild(placeholder);
-
-        const nameTag = document.createElement('span');
-        nameTag.className = 'video-tile__name';
-        tile.appendChild(nameTag);
-
-        const badges = document.createElement('span');
-        badges.className = 'video-tile__badges';
-        badges.innerHTML =
-            '<span class="badge badge--mic-off hidden" title="Microfone desligado">🎤🚫</span>' +
-            '<span class="badge badge--camera-off hidden" title="Câmera desligada">📷🚫</span>';
-        tile.appendChild(badges);
-
-        const statusDot = document.createElement('span');
-        statusDot.className = 'video-tile__status-dot';
-        tile.appendChild(statusDot);
-
-        videoGrid.appendChild(tile);
+    if (tile) {
+        tile.querySelector('.video-tile__name').textContent = label;
+        return tile;
     }
-    const video = tile.querySelector('video');
-    video.srcObject = stream;
-    tile.querySelector('.video-tile__name').textContent = label;
-    tile.classList.toggle('video-tile--mirror', mirror);
-    applySinkId(video);
-    tryPlay(video);
-    if (tileId !== 'local') {
+
+    tile = document.createElement('div');
+    tile.className = 'video-tile video-tile--no-video';
+    tile.id = `tile-${tileId}`;
+    tile.classList.toggle('video-tile--mirror', local);
+
+    const video = document.createElement('video');
+    video.autoplay = true;
+    video.playsInline = true;
+    video.muted = local; // nunca reproduzir o próprio áudio de volta (eco)
+    tile.appendChild(video);
+
+    const placeholder = document.createElement('span');
+    placeholder.className = 'video-tile__placeholder';
+    tile.appendChild(placeholder);
+
+    const nameTag = document.createElement('span');
+    nameTag.className = 'video-tile__name';
+    nameTag.textContent = label;
+    tile.appendChild(nameTag);
+
+    const badges = document.createElement('span');
+    badges.className = 'video-tile__badges';
+    badges.innerHTML =
+        '<span class="badge badge--mic-off hidden" title="Microfone desligado">🎤🚫</span>' +
+        '<span class="badge badge--camera-off hidden" title="Câmera desligada">📷🚫</span>';
+    tile.appendChild(badges);
+
+    const statusDot = document.createElement('span');
+    statusDot.className = 'video-tile__status-dot';
+    tile.appendChild(statusDot);
+
+    tile.addEventListener('click', () => toggleFocusedTile(tileId));
+
+    videoGrid.appendChild(tile);
+    if (!local) {
         enableAudioBtn.classList.remove('hidden');
     }
-
-    audioActivityMonitor.watch(tileId, audioStream ?? stream, (speaking) => {
-        tile.classList.toggle('video-tile--speaking', speaking);
-    });
+    return tile;
 }
 
 function removeTile(tileId) {
-    audioActivityMonitor.unwatch(tileId);
+    attachedVideoTracks.delete(tileId);
     document.getElementById(`tile-${tileId}`)?.remove();
+    if (focusedTileId === tileId) {
+        setFocusedTile(null);
+    }
+}
+
+// Dar foco (fixar em destaque) numa transmissão/webcam - clique de novo pra voltar ao grid normal.
+function setFocusedTile(tileId) {
+    focusedTileId = tileId;
+    videoGrid.classList.toggle('video-grid--focused', tileId !== null);
+    videoGrid.querySelectorAll('.video-tile').forEach((tile) => {
+        tile.classList.toggle('video-tile--focused', tile.id === `tile-${tileId}`);
+    });
+}
+
+function toggleFocusedTile(tileId) {
+    setFocusedTile(focusedTileId === tileId ? null : tileId);
 }
 
 function setTileBadges(tileId, { audioEnabled, videoEnabled }) {
@@ -157,20 +147,17 @@ function setTileBadges(tileId, { audioEnabled, videoEnabled }) {
     }
     tile.querySelector('.badge--mic-off')?.classList.toggle('hidden', audioEnabled);
     tile.querySelector('.badge--camera-off')?.classList.toggle('hidden', videoEnabled);
-    tile.classList.toggle('video-tile--no-video', !videoEnabled);
 }
 
-const PEER_STATE_LABELS = {
-    connected: 'ok',
-    completed: 'ok',
-    checking: 'conectando',
-    new: 'conectando',
-    disconnected: 'instável',
-    failed: 'falhou',
-    closed: 'encerrado',
+const QUALITY_LABELS = {
+    excellent: 'ok',
+    good: 'ok',
+    poor: 'instável',
+    lost: 'falhou',
+    unknown: 'conectando',
 };
 
-function setTileStatus(tileId, state) {
+function setTileStatus(tileId, quality) {
     const tile = document.getElementById(`tile-${tileId}`);
     const dot = tile?.querySelector('.video-tile__status-dot');
     if (!dot) {
@@ -181,25 +168,156 @@ function setTileStatus(tileId, state) {
         'video-tile__status-dot--warn',
         'video-tile__status-dot--bad',
     );
-    if (state === 'connected' || state === 'completed') {
+    if (quality === ConnectionQuality.Excellent || quality === ConnectionQuality.Good) {
         dot.classList.add('video-tile__status-dot--ok');
-    } else if (state === 'failed') {
+    } else if (quality === ConnectionQuality.Lost) {
         dot.classList.add('video-tile__status-dot--bad');
     } else {
         dot.classList.add('video-tile__status-dot--warn');
     }
-    dot.title = `Conexão: ${PEER_STATE_LABELS[state] ?? state}`;
+    dot.title = `Conexão: ${QUALITY_LABELS[quality] ?? quality}`;
 }
 
-function getLocalMediaState() {
-    return { audioEnabled: micEnabled, videoEnabled: cameraEnabled };
+/** Câmera OU tela compartilhada, nunca as duas - um <video> só renderiza uma track por vez. */
+function pickPrimaryVideoTrack(participant) {
+    const screenPub = participant.getTrackPublication(Track.Source.ScreenShare);
+    const cameraPub = participant.getTrackPublication(Track.Source.Camera);
+    return screenPub?.track ?? cameraPub?.track ?? null;
+}
+
+function refreshParticipantVideo(participant) {
+    const tileId = participant.identity;
+    const tile = document.getElementById(`tile-${tileId}`);
+    if (!tile) {
+        return;
+    }
+    const video = tile.querySelector('video');
+    const primary = pickPrimaryVideoTrack(participant);
+    const previous = attachedVideoTracks.get(tileId) ?? null;
+    if (previous === primary) {
+        return;
+    }
+    if (previous) {
+        previous.detach(video);
+    }
+    if (primary) {
+        primary.attach(video);
+        tryPlay(video);
+    }
+    tile.classList.toggle('video-tile--no-video', !primary);
+    attachedVideoTracks.set(tileId, primary);
+}
+
+function refreshParticipantBadges(participant) {
+    const micPub = participant.getTrackPublication(Track.Source.Microphone);
+    const camPub = participant.getTrackPublication(Track.Source.Camera);
+    setTileBadges(participant.identity, {
+        audioEnabled: !!micPub && !micPub.isMuted,
+        videoEnabled: !!camPub && !camPub.isMuted,
+    });
+}
+
+function displayNameFor(participant) {
+    if (participant.isLocal) {
+        return `${name} (você)`;
+    }
+    return participant.name || 'Participante';
+}
+
+function handleTrackAdded(track, publication, participant) {
+    ensureTile(participant.identity, displayNameFor(participant), { local: participant.isLocal });
+    if (track.kind === Track.Kind.Audio) {
+        const tile = document.getElementById(`tile-${participant.identity}`);
+        const video = tile?.querySelector('video');
+        if (video) {
+            track.attach(video);
+            tryPlay(video);
+        }
+    } else {
+        refreshParticipantVideo(participant);
+    }
+    refreshParticipantBadges(participant);
+}
+
+function handleTrackRemoved(track, publication, participant) {
+    const tile = document.getElementById(`tile-${participant.identity}`);
+    const video = tile?.querySelector('video');
+    if (video) {
+        track.detach(video);
+    }
+    if (track.kind === Track.Kind.Video) {
+        attachedVideoTracks.delete(participant.identity);
+        refreshParticipantVideo(participant);
+    }
+    refreshParticipantBadges(participant);
+}
+
+function wireRoomEvents() {
+    room.on(RoomEvent.TrackSubscribed, handleTrackAdded);
+    room.on(RoomEvent.TrackUnsubscribed, handleTrackRemoved);
+    room.on(RoomEvent.LocalTrackPublished, (publication, participant) =>
+        handleTrackAdded(publication.track, publication, participant));
+    room.on(RoomEvent.LocalTrackUnpublished, (publication, participant) =>
+        handleTrackRemoved(publication.track, publication, participant));
+
+    room.on(RoomEvent.TrackMuted, (publication, participant) => refreshParticipantBadges(participant));
+    room.on(RoomEvent.TrackUnmuted, (publication, participant) => refreshParticipantBadges(participant));
+
+    room.on(RoomEvent.ParticipantConnected, (participant) => {
+        showToast(`${participant.name || 'Alguém'} entrou na sala`);
+    });
+    room.on(RoomEvent.ParticipantDisconnected, (participant) => {
+        showToast(`${participant.name || 'Alguém'} saiu da sala`);
+        removeTile(participant.identity);
+    });
+
+    room.on(RoomEvent.ActiveSpeakersChanged, (speakers) => {
+        const speakingIds = new Set(speakers.map((participant) => participant.identity));
+        videoGrid.querySelectorAll('.video-tile').forEach((tile) => {
+            const tileId = tile.id.slice('tile-'.length);
+            tile.classList.toggle('video-tile--speaking', speakingIds.has(tileId));
+        });
+    });
+
+    room.on(RoomEvent.ConnectionQualityChanged, (quality, participant) => {
+        setTileStatus((participant ?? room.localParticipant).identity, quality);
+    });
+
+    room.on(RoomEvent.Reconnecting, () => {
+        connectionStatus.textContent = 'conexão: reconectando…';
+    });
+    room.on(RoomEvent.Reconnected, () => {
+        connectionStatus.textContent = 'conexão: conectado';
+    });
+    room.on(RoomEvent.Disconnected, () => {
+        if (leaving) {
+            return;
+        }
+        connectionStatus.textContent = 'conexão: perdida';
+        showBanner('Conexão com o servidor de mídia perdida.', {
+            dismissible: false,
+            actionLabel: 'Recarregar página',
+            onAction: () => window.location.reload(),
+        });
+    });
+}
+
+async function fetchAccessToken() {
+    const params = new URLSearchParams({ identity, name });
+    const response = await fetch(`/room/${roomId}/token?${params}`);
+    if (!response.ok) {
+        throw new Error('Falha ao obter token de acesso da sala');
+    }
+    return response.json();
 }
 
 async function init() {
     roomLoading?.classList.remove('hidden');
     setControlsEnabled(false);
 
+    let credentials;
     try {
+        credentials = await fetchAccessToken();
         localStream = await getLocalMedia();
     } catch (error) {
         roomLoading?.classList.add('hidden');
@@ -212,75 +330,38 @@ async function init() {
         return;
     }
 
-    cameraTrack = localStream.getVideoTracks()[0];
-    micTrack = localStream.getAudioTracks()[0];
-    // Captura a câmera junto (pra não pedir permissão de novo ao ligar), mas já entra
-    // desabilitada - só manda vídeo pros remotos quando o usuário ligar manualmente.
-    toggleVideoTrack(localStream, cameraEnabled);
-    upsertTile('local', localStream, `${name} (você)`, { muted: true, mirror: true });
-    cameraBtn.classList.toggle('is-off', !cameraEnabled);
-    setTileBadges('local', getLocalMediaState());
+    micTrack = localStream.getAudioTracks()[0] ?? null;
+    cameraTrack = localStream.getVideoTracks()[0] ?? null;
 
-    signalingSocket = new SignalingSocket({ roomId, peerId, name });
-    signalingSocket.onOpen(() => {
-        connectionStatus.textContent = 'sinalização: conectado';
-        dismissReconnectBanner?.();
-        dismissReconnectBanner = null;
+    room = new Room({ adaptiveStream: true, dynacast: true });
+    wireRoomEvents();
+
+    try {
+        await room.connect(credentials.url, credentials.token);
+    } catch (error) {
         roomLoading?.classList.add('hidden');
-        setControlsEnabled(true);
-        if (hasConnectedBefore) {
-            // Sessão nova no servidor (afterConnectionEstablished trata reconexão como
-            // conexão do zero) - descarta as RTCPeerConnection antigas antes da próxima
-            // mensagem "peers" chegar, senão o mesh duplica/faz oferta em cima de conexão morta.
-            peerMesh.resetForReconnect();
-        }
-        hasConnectedBefore = true;
-    });
-    signalingSocket.onClose(() => {
-        if (!leaving) {
-            connectionStatus.textContent = 'sinalização: desconectado';
-        }
-    });
-    signalingSocket.onReconnectAttempt((attempt, delayMs) => {
-        connectionStatus.textContent = `sinalização: reconectando (tentativa ${attempt}, ${Math.round(delayMs / 1000)}s)…`;
-    });
-    signalingSocket.onReconnectFailed(() => {
-        connectionStatus.textContent = 'sinalização: perdida';
-        dismissReconnectBanner = showBanner('Conexão com o servidor perdida.', {
+        console.error(error);
+        showBanner('Não foi possível conectar à sala.', {
             dismissible: false,
-            actionLabel: 'Recarregar página',
+            actionLabel: 'Tentar novamente',
             onAction: () => window.location.reload(),
         });
-    });
-    signalingSocket.onHandlerError((error, message) => {
-        console.error(error);
-        showToast(`Falha ao negociar conexão (${message.type})`, { type: 'error' });
-    });
+        return;
+    }
 
-    peerMesh = new PeerMesh({
-        signaling: signalingSocket,
-        iceServers,
-        localStream,
-        onRemoteStream: (remotePeerId, stream, remoteName) => {
-            upsertTile(remotePeerId, stream, remoteName ?? 'Participante', { muted: false });
-        },
-        onRemoteStreamRemoved: (remotePeerId) => {
-            removeTile(remotePeerId);
-        },
-        onPeerJoined: (_remotePeerId, remoteName) => {
-            showToast(`${remoteName ?? 'Alguém'} entrou na sala`);
-        },
-        onPeerLeft: (_remotePeerId, remoteName) => {
-            showToast(`${remoteName ?? 'Alguém'} saiu da sala`);
-        },
-        onPeerStateChange: (remotePeerId, state) => {
-            setTileStatus(remotePeerId, state);
-        },
-        onRemoteMediaState: (remotePeerId, audioEnabled, videoEnabled) => {
-            setTileBadges(remotePeerId, { audioEnabled, videoEnabled });
-        },
-        getLocalMediaState,
-    });
+    // Cria o próprio tile já na entrada (mesmo sem nenhuma track publicada ainda) -
+    // publishTrack do microfone dispara LocalTrackPublished logo em seguida e preenche o resto.
+    ensureTile(identity, `${name} (você)`, { local: true });
+    if (micTrack) {
+        await room.localParticipant.publishTrack(micTrack, { source: Track.Source.Microphone, name: 'microphone' });
+    }
+    // A câmera fica capturada (permissão já concedida, luz acesa) mas sem publicar - só manda
+    // vídeo pros outros quando o usuário liga manualmente, e sem gastar banda enquanto isso.
+    cameraBtn.classList.toggle('is-off', !cameraEnabled);
+
+    roomLoading?.classList.add('hidden');
+    setControlsEnabled(true);
+    connectionStatus.textContent = 'conexão: conectado';
 
     await populateDeviceSelectors();
     navigator.mediaDevices.addEventListener('devicechange', populateDeviceSelectors);
@@ -304,14 +385,14 @@ function fillSelect(select, devices, selectedDeviceId) {
 async function populateDeviceSelectors() {
     const { inputs, outputs } = await listAudioDevices();
     const videoInputs = await listVideoDevices();
-    fillSelect(micSelect, inputs, localStream?.getAudioTracks()[0]?.getSettings().deviceId);
+    fillSelect(micSelect, inputs, micTrack?.getSettings().deviceId);
     fillSelect(cameraSelect, videoInputs, cameraTrack?.getSettings().deviceId);
 
     // A maioria dos navegadores mobile (Chrome/Safari Android e iOS) não implementa
     // HTMLMediaElement.setSinkId - nesse caso é melhor esconder o seletor do que mostrar
     // um dropdown desabilitado confuso.
     if (supportsAudioOutputSelection()) {
-        fillSelect(speakerSelect, outputs, currentSinkId);
+        fillSelect(speakerSelect, outputs);
     } else {
         speakerSelect.closest('.device-select').classList.add('hidden');
     }
@@ -319,28 +400,13 @@ async function populateDeviceSelectors() {
 
 micSelect.addEventListener('change', async () => {
     const deviceId = micSelect.value;
-    if (!deviceId) {
+    if (!deviceId || !room) {
         return;
     }
     try {
-        const newTrack = await getAudioTrackForDevice(deviceId);
-        const oldTrack = localStream.getAudioTracks()[0];
-        if (oldTrack) {
-            localStream.removeTrack(oldTrack);
-            oldTrack.stop();
-        }
-        newTrack.enabled = micEnabled;
-        localStream.addTrack(newTrack);
-        micTrack = newTrack;
-        peerMesh?.replaceAudioTrack(newTrack);
-        // upsertTile não é chamado aqui (o tile já existe, só a track de áudio mudou) - reconecta
-        // o indicador de "falando" à nova track, senão ele fica preso na antiga (já parada).
-        const localTile = document.getElementById('tile-local');
-        if (localTile) {
-            audioActivityMonitor.watch('local', localStream, (speaking) => {
-                localTile.classList.toggle('video-tile--speaking', speaking);
-            });
-        }
+        await room.switchActiveDevice('audioinput', deviceId);
+        micTrack = room.localParticipant.getTrackPublication(Track.Source.Microphone)?.track?.mediaStreamTrack
+            ?? micTrack;
     } catch (error) {
         console.error('Falha ao trocar de microfone', error);
         showToast(error.message ?? 'Falha ao trocar de microfone', { type: 'error' });
@@ -349,21 +415,13 @@ micSelect.addEventListener('change', async () => {
 
 cameraSelect.addEventListener('change', async () => {
     const deviceId = cameraSelect.value;
-    if (!deviceId) {
+    if (!deviceId || !room) {
         return;
     }
     try {
-        const newTrack = await getVideoTrackForDevice(deviceId);
-        const oldTrack = localStream.getVideoTracks()[0];
-        if (oldTrack) {
-            localStream.removeTrack(oldTrack);
-            oldTrack.stop();
-        }
-        newTrack.enabled = cameraEnabled;
-        localStream.addTrack(newTrack);
-        cameraTrack = newTrack;
-        peerMesh?.replaceVideoTrack(newTrack);
-        upsertTile('local', localStream, `${name} (você)`, { muted: true, mirror: true });
+        await room.switchActiveDevice('videoinput', deviceId);
+        cameraTrack = room.localParticipant.getTrackPublication(Track.Source.Camera)?.track?.mediaStreamTrack
+            ?? cameraTrack;
     } catch (error) {
         console.error('Falha ao trocar de câmera', error);
         showToast(error.message ?? 'Falha ao trocar de câmera', { type: 'error' });
@@ -371,34 +429,46 @@ cameraSelect.addEventListener('change', async () => {
 });
 
 speakerSelect.addEventListener('change', async () => {
-    currentSinkId = speakerSelect.value;
-    const videos = videoGrid.querySelectorAll('video');
-    for (const video of videos) {
-        await applySinkId(video);
+    try {
+        await room.switchActiveDevice('audiooutput', speakerSelect.value);
+    } catch (error) {
+        console.error('Falha ao trocar saída de áudio', error);
     }
 });
 
-micBtn.addEventListener('click', () => {
-    if (!localStream) return;
+micBtn.addEventListener('click', async () => {
+    const publication = room?.localParticipant.getTrackPublication(Track.Source.Microphone);
+    if (!publication) {
+        return;
+    }
     micEnabled = !micEnabled;
-    toggleAudioTrack(localStream, micEnabled);
     micBtn.classList.toggle('is-off', !micEnabled);
-    setTileBadges('local', getLocalMediaState());
-    peerMesh?.broadcastMediaState(getLocalMediaState());
+    await (micEnabled ? publication.unmute() : publication.mute());
 });
 
-cameraBtn.addEventListener('click', () => {
-    if (!localStream) return;
+cameraBtn.addEventListener('click', async () => {
+    if (!room || !cameraTrack) {
+        return;
+    }
     cameraEnabled = !cameraEnabled;
-    toggleVideoTrack(localStream, cameraEnabled);
     cameraBtn.classList.toggle('is-off', !cameraEnabled);
-    setTileBadges('local', getLocalMediaState());
-    peerMesh?.broadcastMediaState(getLocalMediaState());
+    try {
+        if (cameraEnabled) {
+            await room.localParticipant.publishTrack(cameraTrack, { source: Track.Source.Camera, name: 'camera' });
+        } else {
+            await room.localParticipant.unpublishTrack(cameraTrack);
+        }
+    } catch (error) {
+        console.error('Falha ao alternar câmera', error);
+        showToast('Falha ao alternar câmera', { type: 'error' });
+        cameraEnabled = !cameraEnabled;
+        cameraBtn.classList.toggle('is-off', !cameraEnabled);
+    }
 });
 
 screenBtn.addEventListener('click', async () => {
     if (screenStream) {
-        stopScreenShare();
+        await stopScreenShare();
         return;
     }
     try {
@@ -406,62 +476,47 @@ screenBtn.addEventListener('click', async () => {
     } catch {
         return; // usuário cancelou o seletor de tela
     }
-    const screenTrack = screenStream.getVideoTracks()[0];
-    peerMesh.replaceVideoTrack(screenTrack);
 
-    // Nem todo compartilhamento vem com áudio (depende do SO/navegador e se o usuário
-    // marcou a opção no seletor nativo) - só mixa se realmente veio uma track de áudio.
-    // Sem microfone (ex: máquina sem mic) não há o que mixar - manda só o áudio do sistema.
+    const screenTrack = screenStream.getVideoTracks()[0];
+    await room.localParticipant.publishTrack(screenTrack, { source: Track.Source.ScreenShare, name: 'screen' });
+
+    // Nem todo compartilhamento vem com áudio (depende do SO/navegador e se o usuário marcou
+    // a opção no seletor nativo). Publicado como track separada - continua tocando junto com
+    // o microfone (que segue publicado normalmente), sem precisar mixar os dois manualmente.
     const systemAudioTrack = screenStream.getAudioTracks()[0];
     if (systemAudioTrack) {
-        if (micTrack) {
-            mixedAudio = mixAudioTracks(micTrack, systemAudioTrack);
-            peerMesh.replaceAudioTrack(mixedAudio.track);
-            micSelect.disabled = true;
-        } else {
-            peerMesh.replaceAudioTrack(systemAudioTrack);
-        }
+        await room.localParticipant.publishTrack(systemAudioTrack, {
+            source: Track.Source.ScreenShareAudio,
+            name: 'screen_audio',
+        });
     }
 
-    upsertTile('local', screenStream, `${name} (compartilhando tela)`, {
-        muted: true,
-        mirror: false,
-        audioStream: localStream,
-    });
-    // Tela compartilhada é vídeo real mesmo que a câmera esteja desligada -
-    // não mostra o placeholder por cima.
-    document.getElementById('tile-local')?.classList.remove('video-tile--no-video');
-    screenTrack.addEventListener('ended', stopScreenShare);
+    screenTrack.addEventListener('ended', () => stopScreenShare());
     screenBtn.classList.add('is-active');
     cameraSelect.disabled = true;
 });
 
-function stopScreenShare() {
+async function stopScreenShare() {
     if (!screenStream) {
         return;
     }
+    const screenTrack = screenStream.getVideoTracks()[0];
+    const systemAudioTrack = screenStream.getAudioTracks()[0];
+    if (screenTrack) {
+        await room.localParticipant.unpublishTrack(screenTrack);
+    }
+    if (systemAudioTrack) {
+        await room.localParticipant.unpublishTrack(systemAudioTrack);
+    }
     stopStream(screenStream);
     screenStream = null;
-
-    if (mixedAudio) {
-        mixedAudio.stop();
-        mixedAudio = null;
-        peerMesh?.replaceAudioTrack(micTrack);
-        micSelect.disabled = false;
-    }
-
-    peerMesh?.replaceVideoTrack(cameraTrack);
-    upsertTile('local', localStream, `${name} (você)`, { muted: true, mirror: true });
-    setTileBadges('local', getLocalMediaState());
     screenBtn.classList.remove('is-active');
     cameraSelect.disabled = false;
 }
 
 leaveBtn.addEventListener('click', () => {
     leaving = true;
-    peerMesh?.closeAll();
-    signalingSocket?.close();
-    if (mixedAudio) mixedAudio.stop();
+    room?.disconnect();
     if (screenStream) stopStream(screenStream);
     if (localStream) stopStream(localStream);
     // Pequeno atraso antes de navegar: em algumas combinações de SO/driver a câmera não é
@@ -473,9 +528,8 @@ leaveBtn.addEventListener('click', () => {
 });
 
 window.addEventListener('beforeunload', () => {
-    peerMesh?.closeAll();
-    signalingSocket?.close();
-    if (mixedAudio) mixedAudio.stop();
+    leaving = true;
+    room?.disconnect();
     if (screenStream) stopStream(screenStream);
     if (localStream) stopStream(localStream);
 });

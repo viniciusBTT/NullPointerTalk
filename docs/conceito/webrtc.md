@@ -1,5 +1,7 @@
 # WebRTC: mesh P2P, SDP, ICE, STUN/TURN
 
+> **Nota:** este doc descreve o design original do projeto (mesh P2P), mantido como material de estudo sobre os fundamentos do WebRTC. O projeto migrou pra um SFU self-hosted (LiveKit) — ver [`docs/projeto/arquitetura.md`](../projeto/arquitetura.md) pra arquitetura atual.
+
 ## O problema que o WebRTC resolve
 
 Fazer dois navegadores trocarem áudio/vídeo **diretamente**, sem o servidor precisar retransmitir a mídia. O servidor só entra pra "apresentar" as pontas (sinalização) — depois disso, ele sai de cena.

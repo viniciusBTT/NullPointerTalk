@@ -9,7 +9,7 @@ NullPointerTalk/
   src/main/resources/
     templates/   Thymeleaf (home.html, room.html)
     static/      CSS + JS puro (sem build, sem npm)
-  docker-compose.yml   Postgres + MongoDB (infra local, usada a partir da fase do chat)
+  docker-compose.yml   LiveKit (SFU de mídia, ver "Como as peças se conectam" abaixo)
   docs/
     conceito/   explicações dos conceitos usados, com referências
     projeto/    este conjunto de docs, sobre o código em si
@@ -20,51 +20,53 @@ Repositório único (sem subpasta `backend/`, sem frontend separado): o Spring B
 ## Como as peças se conectam
 
 ```
-┌───────────────────────────────────────────┐         WebSocket puro          ┌──────────────────────────┐
-│  Navegador A                               │ ───── sinalização WebRTC ─────► │  Backend (Spring Boot)   │
-│  (home.html/room.html + JS puro)           │ ◄──── offer/answer/ICE ──────── │                          │
-│                                             │                                 │  SignalingWebSocketHandler│
-│  ┌────────────────────┐                    │                                 │  HomeController           │
-│  │ RTCPeerConnection   │                    │                                 │  RoomController           │
-│  │ (mesh P2P)          │                    │                                 │  RoomCatalog (salas fixas)│
-│  └────────────────────┘                    │                                 │                          │
-│           │ mídia direta (áudio/vídeo/tela) │                                 │                          │
-│           ▼                                │                                 │                          │
-│  ┌────────────────────┐                    │                                 │                          │
-│  │ Navegador B         │                    │                                 │                          │
-│  │ (peer remoto)       │                    │                                 │                          │
-│  └────────────────────┘                    │                                 │                          │
-└───────────────────────────────────────────┘                                 └──────────────────────────┘
+┌───────────────────────────┐                                    ┌──────────────────────────┐
+│  Navegador A               │   1. GET /room/{id}/token          │  Backend (Spring Boot)   │
+│  (room.html + JS puro)     │ ─────────────────────────────────► │                          │
+│                             │ ◄───────────────────────────────  │  LiveKitTokenService      │
+│  ┌──────────────────────┐  │   {token, url} (JWT HS256)         │  RoomController           │
+│  │ Room (livekit-client) │  │                                    │  HomeController           │
+│  └──────────┬───────────┘  │                                    │  RoomCatalog (salas fixas)│
+│             │ 2. connect(url, token)                             └──────────────────────────┘
+└─────────────┼─────────────┘
+              │  uma única conexão WebRTC (WS + mídia UDP/SRTP)
+              ▼
+     ┌──────────────────────┐
+     │  LiveKit (SFU)        │   recebe 1 upload de cada participante e reencaminha
+     │  docker-compose        │   seletivamente pros outros - nunca decodifica/mixa
+     └───────────┬───────────┘
+                 │
+     ┌───────────┴───────────┐
+     │  Navegador B, C, ...   │  (mesmo esquema: 1 conexão cada, com o LiveKit)
+     └────────────────────────┘
 ```
 
-**Sinalização WebRTC** — WebSocket puro (`/ws/signaling`). Só transporta offer/answer/ICE candidates entre os navegadores da mesma sala, direcionado por `peerId` (campo `to`). Ver [`docs/conceito/sinalizacao-websocket.md`](../conceito/sinalizacao-websocket.md).
+**Token de acesso** — `GET /room/{roomId}/token` (`RoomController`) devolve um JWT assinado (`LiveKitTokenService`, HMAC-SHA256, sem depender do SDK de servidor do LiveKit) com um "video grant" pra aquela sala. O backend nunca participa da sinalização WebRTC propriamente dita nem vê mídia - só emite essa credencial.
 
-A mídia (áudio/vídeo/tela) trafega **direto entre os navegadores** depois que a sinalização termina — o backend nunca vê esses bytes. Ver [`docs/conceito/webrtc.md`](../conceito/webrtc.md).
+**Mídia e sinalização WebRTC** — inteiramente entre o navegador e o LiveKit, numa conexão só (`RTCPeerConnection` gerenciada internamente pelo `Room` do `livekit-client`). O LiveKit reencaminha os streams entre os participantes da sala (modelo SFU). Ver [`docs/conceito/webrtc.md`](../conceito/webrtc.md) (a seção de mesh P2P documenta o design anterior deste projeto, mantida como material de estudo).
 
 ## Por que essas escolhas
 
-Decisões tomadas para maximizar aprendizado, documentadas em detalhe em `docs/conceito/`:
-
-- **Mesh P2P** em vez de SFU — expõe os fundamentos do WebRTC sem infraestrutura de mídia externa ao Java/Spring.
-- **WebSocket puro** para sinalização, sem abstração — mostra o ciclo de vida completo de uma sessão WebSocket (conectar, registrar, rotear, desconectar).
-- **Thymeleaf + JS puro** em vez de um SPA (React/Vite) — projeto de laboratório, sem necessidade de build/roteamento client-side/estado global para uma tela de vídeo com salas fixas. Um módulo Maven só, sem CORS a configurar.
-- **Salas fixas no código** (fase 1) — sem CRUD, sem persistência ainda; simplifica o primeiro corte funcional.
-- **STUN público** por enquanto — suficiente para testes em localhost/mesma rede.
+- **SFU (LiveKit) em vez de mesh P2P** — o projeto deixou de ser só um laboratório e passou a ser usado de verdade com amigos (VPS própria); mesh não escala além de poucos participantes e tem limitações reais de robustez (reconexão manual, sem controle de banda). LiveKit é open-source (Apache-2.0), self-hosted, maduro e resolve isso sem custo de licença.
+- **Token JWT à mão** (`LiveKitTokenService`) em vez do SDK de servidor do LiveKit — é só um JWS HS256 com 4 claims; monta à mão evita depender de uma lib externa (e uma incerteza de compatibilidade com Jackson 3, usado neste projeto) só pra isso. Mesmo padrão que já era usado em `TurnCredentialsService` pro TURN do coturn.
+- **`livekit-client` vendorizado** (bundle ESM em `static/js/vendor/`, sem npm) — mantém a decisão de não ter build step no frontend mesmo trazendo um SDK externo.
+- **Thymeleaf + JS puro** em vez de um SPA (React/Vite) — sem necessidade de build/roteamento client-side/estado global para uma tela de vídeo com salas fixas. Um módulo Maven só, sem CORS a configurar.
+- **Salas fixas no código** — sem CRUD, sem persistência ainda; o LiveKit cria a sala automaticamente no primeiro join, usando o `id` do `RoomCatalog` como nome da sala.
 
 ## Próxima fase (não implementada ainda)
 
-- **Chat de texto** — STOMP sobre WebSocket (`/ws/chat`, com broadcast por sala via tópicos), comparando com a sinalização em WebSocket puro. Ver [`docs/conceito/stomp.md`](../conceito/stomp.md).
+- **Chat de texto** — STOMP sobre WebSocket (`/ws/chat`, com broadcast por sala via tópicos). Ver [`docs/conceito/stomp.md`](../conceito/stomp.md). Alternativa a considerar: o canal de dados do próprio LiveKit (`canPublishData`/`publishData()`), já que a conexão de mídia existe de qualquer forma - mas ainda precisaria de um banco pra histórico persistente.
 - **Persistência poliglota** — Postgres para dados relacionais (Room/Participant, se fizer sentido) e MongoDB para o histórico de chat. Ver [`docs/conceito/persistencia-poliglota.md`](../conceito/persistencia-poliglota.md). A autoconfiguração de JPA/Mongo está desligada em `application.properties` até essa fase entrar (ver [`docs/projeto/backend.md`](backend.md)).
 
-## Fase 3 — TURN próprio (VPS)
+## Deploy na VPS (LiveKit + nginx + TLS)
 
-Quando o projeto é hospedado numa VPS para testar com pessoas em redes diferentes (NAT real entre as pontas):
+Para chamadas reais entre pessoas em redes diferentes:
 
-- `coturn` sobe como serviço no `docker-compose.yml`, com `network_mode: host` (faixa de portas UDP de relay) e config em `coturn/turnserver.conf`.
-- `TurnCredentialsService` (backend) gera credenciais de curta duração via HMAC-SHA1 (`webrtc.turn.secret` compartilhado com o coturn) a cada renderização de `room.html` — em vez de usuário/senha fixos embutidos no HTML. Ver [`docs/conceito/webrtc.md`](../conceito/webrtc.md#turn-com-credenciais-de-curta-duração).
-- `RoomController` monta a lista de `iceServers` (STUN sempre, TURN só se `webrtc.turn.urls` estiver configurado) e serializa como `data-ice-servers` no template, consumido por `peers.js`.
-- Perfil `vps` (`application-vps.properties`) liga o TURN; sem esse perfil ativo (dev local/ngrok), só STUN público é usado.
-- Dockerfile do backend para deploy — ainda não implementado.
+- `livekit` sobe como serviço no `docker-compose.yml`, com `network_mode: host` (precisa da faixa de portas UDP de mídia alcançável de fora) e config em `livekit/livekit.yaml`, que já inclui TURN embutido (substitui o antigo `coturn` standalone).
+- Perfil `vps` (`application-vps.properties`) aponta `livekit.url` pro subdomínio público (`wss://livekit.SEUDOMINIO`) e usa a mesma `keys:` do `livekit.yaml`.
+- O nginx que já termina TLS na 443 pro backend (porta 8080) precisa de uma rota extra: um subdomínio (`livekit.SEUDOMINIO`, com seu próprio registro DNS) proxiando pra `127.0.0.1:7880` com headers de upgrade de WebSocket, e certificado próprio (certbot/Let's Encrypt) - LiveKit exige TLS válido em produção (WSS), não dá pra usar autoassinado sem os visitantes verem aviso de segurança.
+- O range de portas UDP de mídia (`rtc.port_range_start/end` no `livekit.yaml`) e a porta TURN (3478) precisam estar abertos direto no firewall da VPS - isso **não** passa pelo nginx (nginx só faz proxy de HTTP/WebSocket, não de RTP puro).
+- **Importante sobre ngrok**: só a sinalização (WSS) tunela por ngrok - a mídia é UDP puro e ngrok não encaminha UDP. Pra chamadas de verdade (não só teste solo local) o alvo tem que ser a VPS com IP público e porta UDP aberta.
 
 ## Ver também
 

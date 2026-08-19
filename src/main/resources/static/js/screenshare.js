@@ -1,4 +1,4 @@
-/** Captura de tela para compartilhamento (troca de track via peers.js#replaceVideoTrack). */
+/** Captura de tela para compartilhamento (publicada como track separada em room.js). */
 
 /**
  * Pede video + audio do sistema/aba (o navegador decide se oferece a opcao de audio -

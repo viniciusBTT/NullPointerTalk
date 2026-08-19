@@ -253,6 +253,34 @@ button {
     border-radius: 8px;
     overflow: hidden;
     aspect-ratio: 16 / 9;
+    cursor: pointer;
+}
+
+.video-tile:hover {
+    outline: 2px solid var(--text-muted);
+    outline-offset: -2px;
+}
+
+/* Foco: clicar num tile fixa ele em destaque e os demais viram uma tira de
+   miniaturas embaixo. O "flex: 1 0 100%" no tile focado força a quebra de
+   linha, então o resto do flex-wrap sobra naturalmente pra próxima linha. */
+
+.video-grid--focused {
+    display: flex;
+    flex-wrap: wrap;
+    align-content: flex-start;
+}
+
+.video-grid--focused .video-tile {
+    aspect-ratio: 16 / 9;
+    flex: 0 0 160px;
+}
+
+.video-grid--focused .video-tile--focused {
+    order: -1;
+    flex: 1 0 100%;
+    aspect-ratio: unset;
+    height: min(75vh, calc(100% - 172px));
 }
 
 .video-tile video {

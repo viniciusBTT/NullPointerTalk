@@ -1,0 +1,25 @@
+# Config do LiveKit (servidor de midia SFU) - substitui o coturn: virou o unico
+# componente que fala UDP/RTP de verdade, sinalizacao e TURN embutido no mesmo
+# processo. Rodando com network_mode: host (igual o coturn antes), ve as
+# interfaces da maquina direto.
+
+port: 7880          # WS/HTTP de sinalizacao - e' o que o backend Java (LiveKitTokenService)
+                     # aponta em livekit.url e o cliente conecta via room.connect()
+rtc:
+  tcp_port: 7881     # fallback ICE-TCP para redes que bloqueiam UDP
+  port_range_start: 50000
+  port_range_end: 60000
+  use_external_ip: true   # detecta o IP publico via STUN sozinho - sem precisar
+                           # editar "external-ip" a mao como no coturn antigo
+
+turn:
+  enabled: true      # TURN embutido do proprio LiveKit; substitui o coturn standalone
+  udp_port: 3478
+
+# Credenciais que o backend usa pra assinar os tokens de acesso (ver
+# LiveKitTokenService, livekit.api-key/livekit.api-secret no application*.properties).
+# O valor abaixo funciona pronto em dev local. Ao subir na VPS, troque por um
+# segredo proprio (>= 32 caracteres) e replique o mesmo par em
+# application-vps.properties - os dois precisam bater, igual TURN/coturn antes.
+keys:
+  devkey: devsecret_local_apenas_para_desenvolvimento_32

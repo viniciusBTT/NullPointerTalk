@@ -1,12 +1,36 @@
 services:
-  
-  coturn:
-    image: coturn/coturn:latest
-    container_name: nullpointertalk-coturn
+
+  livekit:
+    image: livekit/livekit-server:latest
+    container_name: nullpointertalk-livekit
     network_mode: host
     volumes:
-      - ./coturn/turnserver.conf:/etc/coturn/turnserver.conf:ro
-    command: ["-c", "/etc/coturn/turnserver.conf"]
+      - ./livekit/livekit.yaml:/etc/livekit.yaml:ro
+    command: ["--config", "/etc/livekit.yaml"]
+
+  # Postgres (Room, Participant - dados relacionais). Credenciais aqui precisam
+  # bater com spring.datasource.* em application.properties/application-vps.properties.
+  postgres:
+    image: postgres:16-alpine
+    container_name: nullpointertalk-postgres
+    environment:
+      POSTGRES_DB: nullpointertalk
+      POSTGRES_USER: nullpointertalk
+      POSTGRES_PASSWORD: nullpointertalk
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+  # MongoDB (ChatMessage - historico de chat). URI precisa bater com
+  # spring.data.mongodb.uri em application.properties/application-vps.properties.
+  mongo:
+    image: mongo:7
+    container_name: nullpointertalk-mongo
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
 
 volumes:
   postgres-data:

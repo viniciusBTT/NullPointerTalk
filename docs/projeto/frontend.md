@@ -18,20 +18,20 @@ src/main/resources/
       app.css        # visual dark, estilo Discord
     js/
       home.js        # name-gate: lê/grava localStorage, mostra overlay se não tem nome
-      signaling.js   # wrapper fino sobre WebSocket nativo (connect, send, on)
-      media.js       # getUserMedia + toggles de mic/câmera
-      screenshare.js # getDisplayMedia (troca de track fica em peers.js)
-      peers.js       # mesh: Map<peerId, RTCPeerConnection>, trata offer/answer/ICE, expõe remote streams
-      room.js        # controller da página: junta name+peerId+signaling+media+peers, renderiza os tiles
+      media.js       # getUserMedia (com retry/fallback) + listagem de dispositivos
+      screenshare.js # getDisplayMedia
+      ui-feedback.js # toasts efêmeros + banner persistente
+      room.js        # controller da página: busca token, conecta no LiveKit, renderiza os tiles
+      vendor/
+        livekit-client.esm.min.js  # SDK do LiveKit, vendorizado (sem npm/build) - ver vendor/README.md
 ```
 
 ## Como as peças se conectam
 
 - **Nome do usuário**: sem login — `localStorage` (`npt.username`). `home.js` mostra um overlay pedindo o nome se ainda não existe; `room.js` lê o mesmo valor (redireciona pra `/` se ausente).
 - **Salas**: fixas, vêm do `RoomCatalog` do backend, renderizadas server-side em `home.html`. Clicar em uma navega via link normal (`<a href="/room/{id}">`), sem JS de roteamento.
-- **Sinalização**: `signaling.js` abre um `WebSocket` em `/ws/signaling?roomId=...&peerId=...&name=...`; `peers.js` reage às mensagens (`peers`, `offer`, `answer`, `ice-candidate`, `peer-left`) montando o mesh P2P. Ver [`docs/conceito/sinalizacao-websocket.md`](../conceito/sinalizacao-websocket.md).
-- **Mídia**: `media.js` (câmera/mic) e `screenshare.js` (`getDisplayMedia`); troca de track pra tela via `RTCPeerConnection.getSenders()[...].replaceTrack()` dentro de `peers.js`. Ver [`docs/conceito/webrtc.md`](../conceito/webrtc.md).
-- **ICE servers**: o STUN configurado em `application.properties` (`webrtc.ice-servers[0].urls`) é injetado no `room.html` via `th:attr` (atributo `data-ice-server-url` no `<body>`) — fonte única de configuração, sem round-trip de API extra.
+- **Conexão com o LiveKit**: `room.js` busca um token em `GET /room/{roomId}/token`, cria um `Room` do `livekit-client` e chama `room.connect(url, token)` — uma única conexão WebRTC com o servidor de mídia, em vez de uma por participante remoto. Eventos do `Room` (`RoomEvent.TrackSubscribed`, `ParticipantConnected`, `TrackMuted`, `ActiveSpeakersChanged`, `ConnectionQualityChanged`, `Reconnecting`/`Reconnected`/`Disconnected`, ...) dirigem os tiles/badges/indicadores — ver [`docs/projeto/arquitetura.md`](arquitetura.md).
+- **Mídia**: `media.js` (câmera/mic, com fallback pra dispositivo único) e `screenshare.js` (`getDisplayMedia`); publicação/troca de track é feita direto via `room.localParticipant` (`publishTrack`/`unpublishTrack`/`switchActiveDevice`) — sem `RTCPeerConnection` manual. Ver [`docs/conceito/webrtc.md`](../conceito/webrtc.md) (mesh P2P, design anterior deste projeto, mantido como material de estudo).
 
 ## Próxima fase (não implementada ainda)
 
