@@ -32,6 +32,8 @@ export class PeerMesh {
         this.names = new Map();
         this.pendingCandidates = new Map();
         this.lastIceRestartAt = new Map();
+        this.priorPeerIds = null;
+        this.priorPeerNames = null;
         // Track "atual" de saída, separada de localStream: quando alguém já está
         // compartilhando tela (ou com áudio mixado) e um novo peer entra no meio, a nova
         // RTCPeerConnection precisa começar já com a track ativa, não com a câmera/mic original.
@@ -48,6 +50,21 @@ export class PeerMesh {
     }
 
     async handlePeers(message) {
+        // Depois de uma reconexão, esta é a primeira notícia que temos de quem ainda está na
+        // sala - qualquer peer que conhecíamos antes e não está mais nesta lista saiu enquanto
+        // estávamos desconectados (o servidor não manda peer-left pra quem já tinha caído).
+        if (this.priorPeerIds) {
+            const freshPeerIds = new Set(message.peers.map((peer) => peer.peerId));
+            for (const oldPeerId of this.priorPeerIds) {
+                if (!freshPeerIds.has(oldPeerId)) {
+                    this.onRemoteStreamRemoved?.(oldPeerId);
+                    this.onPeerLeft?.(oldPeerId, this.priorPeerNames.get(oldPeerId));
+                }
+            }
+            this.priorPeerIds = null;
+            this.priorPeerNames = null;
+        }
+
         for (const peer of message.peers) {
             const pc = this.createConnection(peer.peerId, peer.name);
             const offer = await pc.createOffer();
@@ -107,16 +124,23 @@ export class PeerMesh {
     }
 
     handlePeerLeft(message) {
-        const pc = this.connections.get(message.peerId);
+        const cachedName = this.teardownPeer(message.peerId);
+        this.onPeerLeft?.(message.peerId, message.name ?? cachedName);
+    }
+
+    /** Fecha a conexão com um peer específico, limpa seu estado e avisa a UI. Retorna o nome cacheado. */
+    teardownPeer(peerId) {
+        const pc = this.connections.get(peerId);
         if (pc) {
             pc.close();
-            this.connections.delete(message.peerId);
+            this.connections.delete(peerId);
         }
-        this.names.delete(message.peerId);
-        this.pendingCandidates.delete(message.peerId);
-        this.lastIceRestartAt.delete(message.peerId);
-        this.onRemoteStreamRemoved(message.peerId);
-        this.onPeerLeft?.(message.peerId, message.name);
+        const name = this.names.get(peerId);
+        this.names.delete(peerId);
+        this.pendingCandidates.delete(peerId);
+        this.lastIceRestartAt.delete(peerId);
+        this.onRemoteStreamRemoved?.(peerId);
+        return name;
     }
 
     handleMediaState(message) {
@@ -181,7 +205,14 @@ export class PeerMesh {
         return pc;
     }
 
-    /** Reinicia a negociação ICE com um peer cuja conexão falhou (ex: troca de rede no meio da chamada). */
+    /**
+     * Reinicia a negociação ICE com um peer cuja conexão falhou (ex: troca de rede no meio da chamada).
+     * Limitação conhecida: não há papel polite/impolite aqui - se os dois lados detectarem 'failed'
+     * quase juntos, as duas ofertas de restart podem colidir e uma delas se perder. Não é tratado
+     * porque exigiria uma negociação com papéis fixos por peer, o que é mais protocolo do que
+     * cabe nesta janela de corrida estreita; o handler de erro do signaling ao menos evita que a
+     * colisão falhe em silêncio (ver onHandlerError em signaling.js).
+     */
     async attemptIceRestart(peerId) {
         const lastAttempt = this.lastIceRestartAt.get(peerId) ?? 0;
         if (performance.now() - lastAttempt < ICE_RESTART_COOLDOWN_MS) {
@@ -223,6 +254,12 @@ export class PeerMesh {
 
     /** Fecha todas as conexões atuais sem mexer nos listeners de sinalização - usado ao reconectar o WebSocket. */
     resetForReconnect() {
+        // Guarda quem a gente conhecia antes de closeAll() limpar os mapas - handlePeers usa
+        // isso pra descobrir quem realmente saiu da sala enquanto estávamos desconectados
+        // (em vez de deixar o tile congelado pra sempre, já que o servidor não avisa peer-left
+        // de quem já tinha caído antes da nossa reconexão).
+        this.priorPeerIds = new Set(this.connections.keys());
+        this.priorPeerNames = new Map(this.names);
         this.closeAll();
     }
 

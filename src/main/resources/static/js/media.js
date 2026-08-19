@@ -22,15 +22,35 @@ function friendlyMediaError(error) {
 const RETRYABLE_ERRORS = new Set(['NotReadableError', 'NotFoundError']);
 const RETRY_DELAYS_MS = [400, 900];
 
+/** Pede só uma modalidade (audio ou video); retorna null em vez de lançar se não der certo. */
+async function tryGetTrack(kind) {
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({ [kind]: true });
+        return kind === 'audio' ? stream.getAudioTracks()[0] : stream.getVideoTracks()[0];
+    } catch {
+        return null;
+    }
+}
+
 export async function getLocalMedia() {
     for (let attempt = 0; ; attempt++) {
         try {
             return await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
         } catch (error) {
-            if (!RETRYABLE_ERRORS.has(error.name) || attempt >= RETRY_DELAYS_MS.length) {
+            if (RETRYABLE_ERRORS.has(error.name) && attempt < RETRY_DELAYS_MS.length) {
+                await new Promise((resolve) => setTimeout(resolve, RETRY_DELAYS_MS[attempt]));
+                continue;
+            }
+            // O pedido combinado falha por inteiro mesmo quando só uma das duas modalidades
+            // (áudio OU vídeo) não existe/está indisponível nesta máquina - ex: um desktop sem
+            // webcam. Em vez de barrar a entrada na sala por causa de uma só, tenta as duas
+            // separadas e segue com o que estiver disponível; só desiste de verdade se nenhuma
+            // das duas funcionar.
+            const [audioTrack, videoTrack] = await Promise.all([tryGetTrack('audio'), tryGetTrack('video')]);
+            if (!audioTrack && !videoTrack) {
                 throw friendlyMediaError(error);
             }
-            await new Promise((resolve) => setTimeout(resolve, RETRY_DELAYS_MS[attempt]));
+            return new MediaStream([audioTrack, videoTrack].filter(Boolean));
         }
     }
 }

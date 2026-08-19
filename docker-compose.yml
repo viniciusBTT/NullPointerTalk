@@ -1,29 +1,5 @@
 services:
-  postgres:
-    image: postgres:16-alpine
-    container_name: nullpointertalk-postgres
-    environment:
-      POSTGRES_DB: nullpointertalk
-      POSTGRES_USER: nullpointertalk
-      POSTGRES_PASSWORD: nullpointertalk
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres-data:/var/lib/postgresql/data
-
-  mongo:
-    image: mongo:7
-    container_name: nullpointertalk-mongo
-    environment:
-      MONGO_INITDB_DATABASE: nullpointertalk
-    ports:
-      - "27017:27017"
-    volumes:
-      - mongo-data:/data/db
-
-  # TURN/STUN proprio (Fase 3) - so faz sentido subir na VPS, nao em dev local com ngrok.
-  # network_mode: host porque coturn precisa de uma faixa larga de portas UDP de relay;
-  # publicar cada porta individualmente numa rede bridge seria bem mais verboso pra um lab.
+  
   coturn:
     image: coturn/coturn:latest
     container_name: nullpointertalk-coturn

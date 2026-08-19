@@ -22,6 +22,7 @@ export class SignalingSocket {
         this.closeHandlers = [];
         this.reconnectAttemptHandlers = [];
         this.reconnectFailedHandlers = [];
+        this.handlerErrorHandlers = [];
         this.intentionalClose = false;
         this.reconnectAttempt = 0;
         this.reconnectTimer = null;
@@ -35,10 +36,22 @@ export class SignalingSocket {
         this.socket = new WebSocket(`${protocol}://${window.location.host}/ws/signaling?${params}`);
 
         this.socket.addEventListener('message', (event) => {
-            const message = JSON.parse(event.data);
+            let message;
+            try {
+                message = JSON.parse(event.data);
+            } catch (error) {
+                console.error('Mensagem de sinalização inválida recebida', error);
+                return;
+            }
             const handler = this.listeners.get(message.type);
             if (handler) {
-                handler(message);
+                // handler pode ser async (peers.js registra vários) - sem isso, uma rejeição
+                // (ex: setRemoteDescription com sdp fora de ordem) some como unhandled rejection,
+                // sem avisar o usuário e sem deixar o mesh se recuperar daquele peer.
+                Promise.resolve(handler(message)).catch((error) => {
+                    console.error(`Falha ao processar mensagem de sinalização "${message.type}"`, error);
+                    this.handlerErrorHandlers.forEach((errorHandler) => errorHandler(error, message));
+                });
             }
         });
 
@@ -89,6 +102,11 @@ export class SignalingSocket {
     /** Chamado quando MAX_RECONNECT_ATTEMPTS se esgota sem sucesso. */
     onReconnectFailed(handler) {
         this.reconnectFailedHandlers.push(handler);
+    }
+
+    /** handler(error, message) - chamado quando um handler de mensagem lança/rejeita. */
+    onHandlerError(handler) {
+        this.handlerErrorHandlers.push(handler);
     }
 
     send(message) {

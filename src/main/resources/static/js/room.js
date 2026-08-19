@@ -109,6 +109,10 @@ function upsertTile(tileId, stream, label, { muted, mirror = false, audioStream 
         video.muted = muted;
         tile.appendChild(video);
 
+        const placeholder = document.createElement('span');
+        placeholder.className = 'video-tile__placeholder';
+        tile.appendChild(placeholder);
+
         const nameTag = document.createElement('span');
         nameTag.className = 'video-tile__name';
         tile.appendChild(nameTag);
@@ -153,6 +157,7 @@ function setTileBadges(tileId, { audioEnabled, videoEnabled }) {
     }
     tile.querySelector('.badge--mic-off')?.classList.toggle('hidden', audioEnabled);
     tile.querySelector('.badge--camera-off')?.classList.toggle('hidden', videoEnabled);
+    tile.classList.toggle('video-tile--no-video', !videoEnabled);
 }
 
 const PEER_STATE_LABELS = {
@@ -246,6 +251,10 @@ async function init() {
             actionLabel: 'Recarregar página',
             onAction: () => window.location.reload(),
         });
+    });
+    signalingSocket.onHandlerError((error, message) => {
+        console.error(error);
+        showToast(`Falha ao negociar conexão (${message.type})`, { type: 'error' });
     });
 
     peerMesh = new PeerMesh({
@@ -402,11 +411,16 @@ screenBtn.addEventListener('click', async () => {
 
     // Nem todo compartilhamento vem com áudio (depende do SO/navegador e se o usuário
     // marcou a opção no seletor nativo) - só mixa se realmente veio uma track de áudio.
+    // Sem microfone (ex: máquina sem mic) não há o que mixar - manda só o áudio do sistema.
     const systemAudioTrack = screenStream.getAudioTracks()[0];
     if (systemAudioTrack) {
-        mixedAudio = mixAudioTracks(micTrack, systemAudioTrack);
-        peerMesh.replaceAudioTrack(mixedAudio.track);
-        micSelect.disabled = true;
+        if (micTrack) {
+            mixedAudio = mixAudioTracks(micTrack, systemAudioTrack);
+            peerMesh.replaceAudioTrack(mixedAudio.track);
+            micSelect.disabled = true;
+        } else {
+            peerMesh.replaceAudioTrack(systemAudioTrack);
+        }
     }
 
     upsertTile('local', screenStream, `${name} (compartilhando tela)`, {
@@ -414,6 +428,9 @@ screenBtn.addEventListener('click', async () => {
         mirror: false,
         audioStream: localStream,
     });
+    // Tela compartilhada é vídeo real mesmo que a câmera esteja desligada -
+    // não mostra o placeholder por cima.
+    document.getElementById('tile-local')?.classList.remove('video-tile--no-video');
     screenTrack.addEventListener('ended', stopScreenShare);
     screenBtn.classList.add('is-active');
     cameraSelect.disabled = true;
@@ -435,6 +452,7 @@ function stopScreenShare() {
 
     peerMesh?.replaceVideoTrack(cameraTrack);
     upsertTile('local', localStream, `${name} (você)`, { muted: true, mirror: true });
+    setTileBadges('local', getLocalMediaState());
     screenBtn.classList.remove('is-active');
     cameraSelect.disabled = false;
 }

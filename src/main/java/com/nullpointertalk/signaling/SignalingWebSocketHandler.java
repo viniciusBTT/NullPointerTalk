@@ -3,6 +3,8 @@ package com.nullpointertalk.signaling;
 import java.io.IOException;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import org.springframework.web.socket.CloseStatus;
@@ -39,15 +41,27 @@ public class SignalingWebSocketHandler extends TextWebSocketHandler {
         session.getAttributes().put("peerId", peerId);
         session.getAttributes().put("name", name);
 
-        Map<String, WebSocketSession> room = rooms.computeIfAbsent(roomId, id -> new ConcurrentHashMap<>());
-
+        // Registrar o novo peer e ler o estado atual da sala precisam ser atomicos em relacao
+        // a saida do ultimo peer de uma sala (afterConnectionClosed) - senao um join concorrente
+        // com o fechamento da sala pode ficar "orfao": sua sessao entra no mapa da sala, mas a
+        // sala e removida de `rooms` mesmo assim, e ninguem mais a descobre depois.
+        Map<String, WebSocketSession> room;
+        List<WebSocketSession> existingSessions;
         ArrayNode existingPeers = objectMapper.createArrayNode();
-        room.forEach((existingPeerId, existingSession) -> {
-            ObjectNode peer = objectMapper.createObjectNode();
-            peer.put("peerId", existingPeerId);
-            peer.put("name", (String) existingSession.getAttributes().get("name"));
-            existingPeers.add(peer);
-        });
+        synchronized (rooms) {
+            room = rooms.computeIfAbsent(roomId, id -> new ConcurrentHashMap<>());
+            room.forEach((existingPeerId, existingSession) -> {
+                ObjectNode peer = objectMapper.createObjectNode();
+                peer.put("peerId", existingPeerId);
+                peer.put("name", (String) existingSession.getAttributes().get("name"));
+                existingPeers.add(peer);
+            });
+            existingSessions = new ArrayList<>(room.values());
+            // Registrar o peer antes de notificar os outros: se ficasse depois, uma mensagem
+            // relayed (ex: offer) endereçada a este peerId poderia chegar entre a notificação e o
+            // registro e ser descartada por handleTextMessage por nao encontrar a sessao ainda.
+            room.put(peerId, session);
+        }
 
         ObjectNode peersMessage = objectMapper.createObjectNode();
         peersMessage.put("type", "peers");
@@ -58,9 +72,9 @@ public class SignalingWebSocketHandler extends TextWebSocketHandler {
         joinedMessage.put("type", "peer-joined");
         joinedMessage.put("peerId", peerId);
         joinedMessage.put("name", name);
-        broadcast(room, joinedMessage);
-
-        room.put(peerId, session);
+        // Notifica só quem já estava na sala antes deste peer - a lista foi capturada antes do
+        // put, então o próprio peer novo não recebe um "peer-joined" sobre si mesmo.
+        existingSessions.forEach(existingSession -> send(existingSession, joinedMessage));
     }
 
     @Override
@@ -102,26 +116,33 @@ public class SignalingWebSocketHandler extends TextWebSocketHandler {
             return;
         }
 
-        Map<String, WebSocketSession> room = rooms.get(roomId);
-        if (room == null) {
-            return;
-        }
+        boolean removed;
+        List<WebSocketSession> remainingSessions;
+        synchronized (rooms) {
+            Map<String, WebSocketSession> room = rooms.get(roomId);
+            if (room == null) {
+                return;
+            }
 
-        room.remove(peerId);
+            // remove(key, value) só apaga a entrada se ela ainda apontar pra esta sessão -
+            // evita que o close tardio de uma sessão morta (rede caiu, mas o servidor só
+            // percebeu depois) expulse a sessão nova que já reconectou com o mesmo peerId.
+            removed = room.remove(peerId, session);
+            if (!removed) {
+                return;
+            }
+
+            remainingSessions = new ArrayList<>(room.values());
+            if (room.isEmpty()) {
+                rooms.remove(roomId, room);
+            }
+        }
 
         ObjectNode leftMessage = objectMapper.createObjectNode();
         leftMessage.put("type", "peer-left");
         leftMessage.put("peerId", peerId);
         leftMessage.put("name", name);
-        broadcast(room, leftMessage);
-
-        if (room.isEmpty()) {
-            rooms.remove(roomId, room);
-        }
-    }
-
-    private void broadcast(Map<String, WebSocketSession> room, JsonNode message) {
-        room.values().forEach(session -> send(session, message));
+        remainingSessions.forEach(remainingSession -> send(remainingSession, leftMessage));
     }
 
     private void send(WebSocketSession session, JsonNode message) {
