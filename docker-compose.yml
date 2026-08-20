@@ -1,5 +1,21 @@
 services:
 
+  # Backend (Spring Boot). network_mode: host pelo mesmo motivo do livekit
+  # abaixo: assim ele enxerga postgres/mongo/livekit em "localhost", igual
+  # application.properties/application-vps.properties ja esperam, sem precisar
+  # reescrever url nenhuma por env var so por causa do Docker.
+  app:
+    build: .
+    container_name: nullpointertalk-app
+    network_mode: host
+    environment:
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-}
+    depends_on:
+      - postgres
+      - mongo
+      - livekit
+    restart: unless-stopped
+
   livekit:
     image: livekit/livekit-server:latest
     container_name: nullpointertalk-livekit
