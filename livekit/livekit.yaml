@@ -9,8 +9,13 @@ rtc:
   tcp_port: 7881     # fallback ICE-TCP para redes que bloqueiam UDP
   port_range_start: 50000
   port_range_end: 60000
-  use_external_ip: true   # detecta o IP publico via STUN sozinho - sem precisar
-                           # editar "external-ip" a mao como no coturn antigo
+  node_ip: 76.13.67.68   # IP publico fixo da VPS. Fixado a mao porque com
+                          # network_mode: host o LiveKit enxergava TODAS as
+                          # interfaces docker da maquina (bridges de outros
+                          # projetos na mesma VPS) e tentava autodetectar/validar
+                          # IP externo em cada uma, sobrando warnings e
+                          # candidatos ICE invalidos com IPs privados.
+  use_external_ip: false
 
 turn:
   enabled: true      # TURN embutido do proprio LiveKit; substitui o coturn standalone
