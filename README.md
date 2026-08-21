@@ -22,7 +22,7 @@ Ver [`docs/projeto/arquitetura.md`](docs/projeto/arquitetura.md) para o diagrama
 
 - **Sem login/senha**: nome do usuário fica em `localStorage` do navegador, pedido uma vez num overlay na home.
 - **Salas fixas** (fase 1): definidas no código (`RoomCatalog`), sem CRUD, sem persistência ainda — estilo lista de canais de um servidor Discord.
-- **Thymeleaf + JS puro** em vez de um SPA: um módulo Maven só, sem build de frontend, sem CORS a configurar (mesma origem). Ver [`docs/projeto/frontend.md`](docs/projeto/frontend.md).
+- **Thymeleaf + JS puro** em vez de um SPA: um módulo Maven só, sem build de frontend, sem CORS a configurar (mesma origem). A interface é um shell persistente de página única — trocar de canal não recarrega nada. Ver [`docs/projeto/frontend.md`](docs/projeto/frontend.md).
 - **Mídia (áudio/vídeo/tela)**: WebRTC via **SFU self-hosted (LiveKit)** — cada participante mantém uma única conexão com o servidor de mídia, que reencaminha os streams pros demais (em vez de mesh P2P, uma `RTCPeerConnection` por participante remoto). Ver [`docs/projeto/arquitetura.md`](docs/projeto/arquitetura.md).
 - **Autenticação da chamada**: o backend emite um token de acesso (JWT HS256, `LiveKitTokenService`) por sala/participante — nunca vê SDP/ICE/mídia, isso é tudo negociado direto entre o navegador e o LiveKit.
 - **STUN/TURN**: embutidos no próprio LiveKit (sem `coturn` separado).
@@ -31,7 +31,7 @@ Ver [`docs/projeto/arquitetura.md`](docs/projeto/arquitetura.md) para o diagrama
 
 ### Próxima fase (não implementada ainda)
 
-- **Chat de texto**: **STOMP sobre WebSocket** (com SockJS), para estudar a camada de pub/sub idiomática do Spring (tópicos por sala) e comparar com a sinalização em WebSocket puro.
+- **Histórico de chat**: o chat já funciona pelo canal de dados do LiveKit, mas sem persistência. **STOMP sobre WebSocket** (com SockJS) + MongoDB entram para isso, e para estudar a camada de pub/sub idiomática do Spring (tópicos por sala).
 - **Persistência poliglota**: **Postgres** para dados relacionais (Room, Participant, se fizer sentido) e **MongoDB** para o histórico de mensagens de chat.
 
 ### Deploy numa VPS para chamadas reais

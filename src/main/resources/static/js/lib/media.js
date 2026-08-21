@@ -55,18 +55,6 @@ export async function getLocalMedia() {
     }
 }
 
-export function toggleAudioTrack(stream, enabled) {
-    stream.getAudioTracks().forEach((track) => {
-        track.enabled = enabled;
-    });
-}
-
-export function toggleVideoTrack(stream, enabled) {
-    stream.getVideoTracks().forEach((track) => {
-        track.enabled = enabled;
-    });
-}
-
 export function stopStream(stream) {
     stream.getTracks().forEach((track) => track.stop());
 }
@@ -86,7 +74,15 @@ export async function listVideoDevices() {
     return devices.filter((d) => d.kind === 'videoinput');
 }
 
-/** Captura só o áudio de um dispositivo específico (usado ao trocar o microfone). */
+/**
+ * Captura só o áudio de um dispositivo específico (usado ao trocar o microfone).
+ *
+ * Isto existe em vez de usar room.switchActiveDevice('audioinput', id) porque o
+ * switchActiveDevice chama LocalTrack.restart() internamente, que PARA a track crua e a
+ * substitui por uma que o SDK passa a possuir. Como o LocalMedia é a fonte única das
+ * tracks locais (elas sobrevivem à troca de canal), deixar o SDK trocá-las por baixo
+ * quebraria essa garantia.
+ */
 export async function getAudioTrackForDevice(deviceId) {
     try {
         const stream = await navigator.mediaDevices.getUserMedia({
