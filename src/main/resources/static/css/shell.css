@@ -1,0 +1,454 @@
+/** O shell: rail, sidebar (canais + participantes + painel de voz) e coluna principal. */
+
+.app {
+    display: grid;
+    grid-template-columns: var(--rail-w) var(--sidebar-w) minmax(0, 1fr);
+    /* dvh e não vh: no mobile a barra de endereço faz o vh mentir, e era isso que cortava
+       a barra de controles embaixo. */
+    height: 100dvh;
+}
+
+/* ---------------------------------------------------------------- rail */
+
+.rail {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding-top: 12px;
+    background: var(--bg-rail);
+}
+
+.rail__logo {
+    display: grid;
+    place-items: center;
+    width: 48px;
+    height: 48px;
+    border-radius: var(--r-lg);
+    background: var(--accent);
+    color: #fff;
+    font-size: 0.8rem;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+}
+
+/* ---------------------------------------------------------------- sidebar */
+
+.sidebar {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    min-height: 0;
+    background: var(--bg-sidebar);
+}
+
+.sidebar__header {
+    display: flex;
+    align-items: center;
+    height: 48px;
+    padding: 0 16px;
+    box-shadow: 0 1px 0 rgba(0, 0, 0, 0.2);
+}
+
+.sidebar__title {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--text-strong);
+}
+
+.sidebar__scroll {
+    overflow-y: auto;
+    padding: 12px 8px;
+    min-height: 0;
+}
+
+.sidebar__label {
+    padding: 0 8px;
+    margin: 0 0 4px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+}
+
+.sidebar__notice {
+    display: flex;
+    gap: 6px;
+    margin: 12px 8px 0;
+    font-size: 0.75rem;
+    color: var(--warn);
+}
+
+/* ---------------------------------------------------------------- lista de canais */
+
+.channel-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.channel__link {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 8px;
+    border-radius: var(--r-sm);
+    color: var(--text-muted);
+    text-decoration: none;
+    font-size: 0.94rem;
+}
+
+.channel__link:hover {
+    background: var(--bg-hover);
+    color: var(--interactive-hover);
+}
+
+.channel--active > .channel__link {
+    background: var(--bg-active);
+    color: var(--text-strong);
+    font-weight: 500;
+}
+
+.channel__icon {
+    width: 20px;
+    text-align: center;
+    font-size: 0.95rem;
+}
+
+.channel__name {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.channel__unread {
+    min-width: 18px;
+    padding: 0 5px;
+    border-radius: var(--r-pill);
+    background: var(--danger);
+    color: #fff;
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-align: center;
+    line-height: 18px;
+}
+
+/* Spinner na própria linha do canal, em vez de um overlay de página inteira: num shell
+   que nunca recarrega, escurecer a tela toda pra entrar num canal seria um exagero. */
+.channel__spinner {
+    display: none;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    border: 2px solid var(--bg-elevated);
+    border-top-color: var(--accent);
+    animation: spin 0.7s linear infinite;
+}
+
+.channel--connecting .channel__spinner {
+    display: block;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* ---------------------------------------------------------------- participantes */
+
+.channel__members {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.channel--populated .channel__members {
+    padding: 2px 0 6px;
+}
+
+.member {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    /* 22px de recuo alinha o avatar com o nome do canal, não com o ícone dele. */
+    margin-left: 22px;
+    padding: 3px 8px;
+    border-radius: var(--r-sm);
+    cursor: pointer;
+    color: var(--text-muted);
+    font-size: 0.86rem;
+}
+
+.member:hover {
+    background: var(--bg-hover);
+    color: var(--interactive-hover);
+}
+
+.member__avatar {
+    display: block;
+    border-radius: 50%;
+    /* O anel de "falando" mora aqui, e box-shadow (em vez de border) porque não muda o
+       tamanho do elemento - então nada se mexe quando alguém começa a falar. */
+    box-shadow: 0 0 0 0 transparent;
+    transition: box-shadow 0.1s ease;
+}
+
+.member--speaking .member__avatar {
+    box-shadow: 0 0 0 2px var(--ok);
+}
+
+.member--speaking {
+    color: var(--text-strong);
+}
+
+.member__name {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.member__badge {
+    display: grid;
+    place-items: center;
+    color: var(--danger);
+}
+
+/* ---------------------------------------------------------------- painel de voz */
+
+.voice-panel {
+    padding: 8px;
+    background: var(--bg-panel);
+}
+
+.voice-panel__status {
+    display: flex;
+    flex-direction: column;
+    padding: 2px 8px 6px;
+    min-height: 1.2rem;
+}
+
+.voice-panel__state {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--text-muted);
+}
+
+.voice-panel__state[data-state="connected"] {
+    color: var(--ok);
+}
+
+.voice-panel__state[data-state="reconnecting"],
+.voice-panel__state[data-state="joining"] {
+    color: var(--warn);
+}
+
+.voice-panel__channel {
+    font-size: 0.8rem;
+    color: var(--text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.voice-panel__me {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 8px;
+    border-radius: var(--r-sm);
+}
+
+.voice-panel__me:hover {
+    background: var(--bg-hover);
+}
+
+.voice-panel__avatar {
+    display: block;
+}
+
+.voice-panel__name {
+    flex: 1;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-strong);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.voice-panel__actions {
+    display: flex;
+    gap: 2px;
+    padding-top: 4px;
+}
+
+/* ---------------------------------------------------------------- coluna principal */
+
+.main {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    min-width: 0;
+    min-height: 0;
+    background: var(--bg-main);
+}
+
+.main__header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: 48px;
+    padding: 0 16px;
+    box-shadow: 0 1px 0 rgba(0, 0, 0, 0.2);
+}
+
+.main__menu {
+    display: none; /* só aparece quando a sidebar vira gaveta */
+}
+
+.main__icon {
+    font-size: 1rem;
+}
+
+.main__title {
+    flex: 1;
+    font-size: 1rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.conn {
+    font-size: 0.78rem;
+    color: var(--warn);
+}
+
+.content {
+    display: grid;
+    grid-template-rows: minmax(0, 1fr);
+    min-height: 0;
+}
+
+/* Com o stage visível ele fica com 45% da altura e o chat com o resto. Sem stage, o
+   :has não casa e o chat ocupa a coluna inteira - sem precisar de classe no JS. */
+.content:has(> .stage:not(.hidden)) {
+    grid-template-rows: minmax(0, 45%) minmax(0, 1fr);
+}
+
+/* ---------------------------------------------------------------- controles da chamada */
+
+.call-controls {
+    display: flex;
+    justify-content: center;
+    gap: 12px;
+    padding: 12px;
+    background: var(--bg-panel);
+    box-shadow: 0 -1px 0 rgba(0, 0, 0, 0.2);
+}
+
+.control-btn {
+    display: grid;
+    place-items: center;
+    width: 48px;
+    height: 48px;
+    border: none;
+    border-radius: 50%;
+    background: var(--bg-elevated);
+    color: var(--text);
+    transition: background 0.12s ease;
+}
+
+.control-btn:hover:not(:disabled) {
+    background: #4a4d55;
+}
+
+.control-btn.is-active {
+    background: var(--accent);
+    color: #fff;
+}
+
+.control-btn.is-active:hover {
+    background: var(--accent-hover);
+}
+
+.control-btn--danger {
+    background: var(--danger);
+    color: #fff;
+}
+
+.control-btn--danger:hover:not(:disabled) {
+    background: var(--danger-hover);
+}
+
+/* ---------------------------------------------------------------- gaveta / responsivo */
+
+.sidebar-backdrop {
+    display: none;
+}
+
+@media (max-width: 900px) {
+    .app {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .rail {
+        display: none;
+    }
+
+    /* A sidebar sai do grid e vira gaveta. Fora da tela por transform, e não por
+       display:none, pra que a transição funcione e o conteúdo já esteja renderizado. */
+    .sidebar {
+        position: fixed;
+        inset: 0 auto 0 0;
+        width: min(var(--sidebar-w), 82vw);
+        z-index: var(--z-sidebar);
+        transform: translateX(-100%);
+        transition: transform 0.18s ease;
+    }
+
+    .sidebar--open {
+        transform: translateX(0);
+    }
+
+    .main__menu {
+        display: grid;
+    }
+
+    .sidebar-backdrop {
+        display: block;
+        position: fixed;
+        inset: 0;
+        z-index: calc(var(--z-sidebar) - 1);
+        background: rgba(0, 0, 0, 0.6);
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.18s ease;
+    }
+
+    /* :has no ancestral em vez de seletor de irmão: no DOM o backdrop vem ANTES da
+       sidebar (pra ficar por baixo dela sem depender só de z-index), então "+" e "~"
+       não alcançariam. */
+    .app:has(.sidebar--open) .sidebar-backdrop {
+        opacity: 1;
+        pointer-events: auto;
+    }
+
+    /* Tela estreita: o stage merece mais espaço proporcional que no desktop, senão os
+       tiles ficam altos demais pro pouco que sobra. */
+    .content:has(> .stage:not(.hidden)) {
+        grid-template-rows: minmax(0, 50%) minmax(0, 1fr);
+    }
+}
+
+@media (max-width: 600px) {
+    .control-btn {
+        width: 44px;
+        height: 44px;
+    }
+
+    .call-controls {
+        gap: 8px;
+        padding: 10px;
+    }
+}

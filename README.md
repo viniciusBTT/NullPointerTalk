@@ -8,7 +8,7 @@ Laboratório de estudos (**não produtivo**) para aprofundar em comunicação em
 NullPointerTalk/
   src/         Spring Boot (Maven, Java 21) — serve páginas (Thymeleaf), estáticos (JS puro) e WebSocket
   pom.xml
-  docker-compose.yml   Postgres + MongoDB (infra local, usada a partir da fase do chat)
+  docker-compose.yml   LiveKit (servidor de mídia SFU)
   docs/
     conceito/  explicações dos conceitos usados, com referências
     projeto/   docs sobre o código/estrutura do projeto
@@ -22,33 +22,35 @@ Ver [`docs/projeto/arquitetura.md`](docs/projeto/arquitetura.md) para o diagrama
 
 - **Sem login/senha**: nome do usuário fica em `localStorage` do navegador, pedido uma vez num overlay na home.
 - **Salas fixas** (fase 1): definidas no código (`RoomCatalog`), sem CRUD, sem persistência ainda — estilo lista de canais de um servidor Discord.
-- **Thymeleaf + JS puro** em vez de um SPA: um módulo Maven só, sem build de frontend, sem CORS a configurar (mesma origem). Ver [`docs/projeto/frontend.md`](docs/projeto/frontend.md).
-- **Mídia (áudio/vídeo/tela)**: WebRTC em **mesh P2P** — cada participante conecta diretamente com os demais via `RTCPeerConnection`. Escolhido para expor os fundamentos do protocolo (SDP, ICE) sem depender de um SFU externo (mediasoup/LiveKit), que tiraria o foco do ecossistema Java/Spring. Não escala bem além de poucos participantes, mas não é o objetivo aqui.
-- **Sinalização WebRTC** (troca de offer/answer/ICE candidates): **WebSocket puro** (`TextWebSocketHandler`), sem abstração, para entender o protocolo na unha.
-- **STUN/TURN**: **STUN público** (Google) sempre disponível. Um `coturn` próprio entra como TURN quando o perfil `vps` está ativo (ver "Fase 3" abaixo) — em dev local com ngrok, STUN público já basta.
-- **Robustez da chamada**: reconexão automática da sinalização (WebSocket) com backoff, reconstrução do mesh ao reconectar, e reinício de ICE (`restartIce()`) quando uma `RTCPeerConnection` individual falha (ex: troca de rede no meio da chamada).
-- **Indicadores em chamada**: badge de mic/câmera desligados nos tiles (local e remoto), indicador de "falando agora" (nível de áudio via Web Audio API), toasts de entrada/saída e um indicador de estado de conexão por participante.
+- **Thymeleaf + JS puro** em vez de um SPA: um módulo Maven só, sem build de frontend, sem CORS a configurar (mesma origem). A interface é um shell persistente de página única — trocar de canal não recarrega nada. Ver [`docs/projeto/frontend.md`](docs/projeto/frontend.md).
+- **Mídia (áudio/vídeo/tela)**: WebRTC via **SFU self-hosted (LiveKit)** — cada participante mantém uma única conexão com o servidor de mídia, que reencaminha os streams pros demais (em vez de mesh P2P, uma `RTCPeerConnection` por participante remoto). Ver [`docs/projeto/arquitetura.md`](docs/projeto/arquitetura.md).
+- **Autenticação da chamada**: o backend emite um token de acesso (JWT HS256, `LiveKitTokenService`) por sala/participante — nunca vê SDP/ICE/mídia, isso é tudo negociado direto entre o navegador e o LiveKit.
+- **STUN/TURN**: embutidos no próprio LiveKit (sem `coturn` separado).
+- **Robustez da chamada**: reconexão automática gerenciada pelo `livekit-client` (retry de ICE/DTLS internamente), sem lógica manual de reconexão no app.
+- **Indicadores em chamada**: badge de mic/câmera desligados nos tiles (local e remoto), indicador de "falando agora" (via `RoomEvent.ActiveSpeakersChanged` do LiveKit), toasts de entrada/saída e um indicador de qualidade de conexão por participante.
 
 ### Próxima fase (não implementada ainda)
 
-- **Chat de texto**: **STOMP sobre WebSocket** (com SockJS), para estudar a camada de pub/sub idiomática do Spring (tópicos por sala) e comparar com a sinalização em WebSocket puro.
+- **Histórico de chat**: o chat já funciona pelo canal de dados do LiveKit, mas sem persistência. **STOMP sobre WebSocket** (com SockJS) + MongoDB entram para isso, e para estudar a camada de pub/sub idiomática do Spring (tópicos por sala).
 - **Persistência poliglota**: **Postgres** para dados relacionais (Room, Participant, se fizer sentido) e **MongoDB** para o histórico de mensagens de chat.
 
-### Fase 3 — TURN próprio para testar com amigos numa VPS
+### Deploy numa VPS para chamadas reais
 
-Para hospedar numa VPS e testar com amigos em redes diferentes (NAT real entre as pontas):
-- `coturn` sobe via `docker-compose.yml` (serviço `coturn`, config em `coturn/turnserver.conf`), com credenciais de curta duração via HMAC (`static-auth-secret`) geradas pelo backend (`TurnCredentialsService`) a cada carregamento da sala — ver [`docs/conceito/webrtc.md`](docs/conceito/webrtc.md).
-- Ativar o perfil `vps` (`SPRING_PROFILES_ACTIVE=vps`, config em `application-vps.properties`) aponta `webrtc.turn.*` para esse coturn.
-- Antes de subir: trocar `SEU_IP_PUBLICO_AQUI` em `coturn/turnserver.conf` pelo IP público da VPS, e `TROQUE_ESTE_SEGREDO` (nos dois arquivos, precisa ser o mesmo valor) por um segredo próprio.
-- Dockerfile do backend para deploy — ainda não implementado.
+Para hospedar numa VPS e usar com amigos em redes diferentes (NAT real entre as pontas):
+- `livekit` sobe via `docker-compose.yml` (config em `livekit/livekit.yaml`, TURN já embutido).
+- Ativar o perfil `vps` (`SPRING_PROFILES_ACTIVE=vps`, config em `application-vps.properties`) aponta `livekit.url` pro subdomínio público do LiveKit.
+- Antes de subir: trocar o par `keys:` em `livekit/livekit.yaml` por um segredo próprio (>= 32 caracteres), e replicar em `livekit.api-key`/`livekit.api-secret` no `application-vps.properties` — os dois precisam bater.
+- Precisa de um subdomínio próprio com TLS (ex: `livekit.SEUDOMINIO` via nginx + Let's Encrypt) proxiando pra porta 7880, e do range de portas UDP de mídia aberto no firewall — ver [`docs/projeto/arquitetura.md`](docs/projeto/arquitetura.md#deploy-na-vps-livekit--nginx--tls).
+- **ngrok não serve pra chamadas de verdade**: só a sinalização tunela por ele, a mídia é UDP puro. Útil só pra teste solo local.
 
 ## Como rodar
 
 ```bash
-./mvnw spring-boot:run   # sobe em :8080, sem precisar do docker compose nesta fase
+docker compose up -d livekit   # servidor de mídia, uma vez só
+./mvnw spring-boot:run          # sobe em :8080
 ```
 
-Abra `http://localhost:8080` em duas abas/navegadores diferentes (uma normal + uma anônima, pra ter `localStorage` separado), defina nomes diferentes, entre na mesma sala e teste vídeo (mesh) e compartilhamento de tela.
+Abra `http://localhost:8080` em duas abas/navegadores diferentes (uma normal + uma anônima, pra ter `localStorage` separado), defina nomes diferentes, entre na mesma sala e teste vídeo e compartilhamento de tela.
 
 ## Conteúdos de referência
 

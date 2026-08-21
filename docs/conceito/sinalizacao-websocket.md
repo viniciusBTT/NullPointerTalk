@@ -1,5 +1,7 @@
 # Sinalização com WebSocket puro
 
+> **Nota:** este doc descreve o relay de sinalização WebRTC (`/ws/signaling`) que o projeto usava com o mesh P2P. Foi substituído por tokens de acesso do LiveKit (`GET /room/{roomId}/token`) — ver [`docs/projeto/arquitetura.md`](../projeto/arquitetura.md). Fica como material de estudo sobre WebSocket puro no Spring.
+
 ## Por que sinalização existe
 
 O WebRTC não define como duas pontas trocam o "convite" (SDP) e os "endereços" (ICE candidates) — isso é responsabilidade da aplicação. É esse papel que o backend cumpre aqui: um "cupido" que apresenta os peers e sai de cena assim que a conexão direta é estabelecida (ver `docs/conceito/webrtc.md`).

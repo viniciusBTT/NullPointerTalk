@@ -1,0 +1,21 @@
+name: Deploy to production
+
+on:
+  push:
+    branches: [prod]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Pull and restart on server
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.IP_HOST }}
+          username: deploy
+          key: ${{ secrets.KEY_HOST }}
+          script: |
+            cd ~/NullPointerTalk
+            git pull origin prod
+            docker compose up -d --build
+            docker image prune -f

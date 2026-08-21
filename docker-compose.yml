@@ -1,12 +1,66 @@
 services:
-  
-  coturn:
-    image: coturn/coturn:latest
-    container_name: nullpointertalk-coturn
+
+  # Backend (Spring Boot). network_mode: host pelo mesmo motivo do livekit
+  # abaixo: assim ele enxerga postgres/mongo/livekit em "localhost", igual
+  # application.properties/application-vps.properties ja esperam, sem precisar
+  # reescrever url nenhuma por env var so por causa do Docker.
+  app:
+    build: .
+    container_name: nullpointertalk-app
     network_mode: host
+    environment:
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-}
+      # URL HTTP do LiveKit pras chamadas servidor->servidor da presenca (RoomService,
+      # API Twirp na mesma :7880 da sinalizacao). Fica AQUI e nao no
+      # application-vps.properties de proposito: aquele arquivo tem a copia da VPS
+      # divergente com as credenciais reais, entao um commit que o toque quebra o
+      # "git pull" do deploy. Isto e' versionado e nao carrega segredo nenhum.
+      #
+      # Loopback porque app e livekit rodam com network_mode: host na MESMA maquina.
+      # Sem isso o backend derivaria de livekit.url e, em producao, daria a volta pelo
+      # DNS publico + nginx + TLS a cada 1,5s pra falar com o processo vizinho - e a
+      # presenca cairia junto se o certificado vencesse.
+      LIVEKIT_API_URL: ${LIVEKIT_API_URL:-http://localhost:7880}
+    depends_on:
+      - postgres
+      - mongo
+      - livekit
+    restart: unless-stopped
+
+  livekit:
+    image: livekit/livekit-server:latest
+    container_name: nullpointertalk-livekit
+    network_mode: host
+    environment:
+      # Sobrepõe o "keys:" do livekit.yaml (LiveKit lê essa env var por cima do arquivo).
+      LIVEKIT_KEYS: "${LIVEKIT_API_KEY}: ${LIVEKIT_API_SECRET}"
     volumes:
-      - ./coturn/turnserver.conf:/etc/coturn/turnserver.conf:ro
-    command: ["-c", "/etc/coturn/turnserver.conf"]
+      - ./livekit/livekit.yaml:/etc/livekit.yaml:ro
+    command: ["--config", "/etc/livekit.yaml"]
+
+  # Postgres (Room, Participant - dados relacionais). Credenciais aqui precisam
+  # bater com spring.datasource.* em application.properties/application-vps.properties.
+  postgres:
+    image: postgres:16-alpine
+    container_name: nullpointertalk-postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+  # MongoDB (ChatMessage - historico de chat). URI precisa bater com
+  # spring.data.mongodb.uri em application.properties/application-vps.properties.
+  mongo:
+    image: mongo:7
+    container_name: nullpointertalk-mongo
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
 
 volumes:
   postgres-data:

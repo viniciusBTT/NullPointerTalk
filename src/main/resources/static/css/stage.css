@@ -1,0 +1,182 @@
+/** A grade de vídeo e os tiles. Só existe quando alguém está transmitindo imagem. */
+
+.stage {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    align-content: start;
+    gap: 10px;
+    padding: 12px;
+    overflow-y: auto;
+    min-height: 0;
+    background: var(--bg-rail);
+}
+
+.tile {
+    position: relative;
+    aspect-ratio: 16 / 9;
+    border-radius: var(--r-md);
+    overflow: hidden;
+    background: var(--bg-tile);
+    cursor: pointer;
+    /* box-shadow inset em vez de border/outline: o anel de "falando" não muda o tamanho
+       do tile, então ninguém se mexe quando alguém começa a falar. */
+    box-shadow: inset 0 0 0 0 transparent;
+    transition: box-shadow 0.1s ease;
+}
+
+.tile:hover {
+    box-shadow: inset 0 0 0 2px var(--bg-elevated);
+}
+
+.tile--speaking,
+.tile--speaking:hover {
+    box-shadow: inset 0 0 0 3px var(--ok);
+}
+
+.tile video {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+/* A tela compartilhada é enquadrada com "contain": recortar um slide ou um editor de
+   código pra preencher o tile esconderia justamente as bordas onde está o conteúdo. */
+.tile--screen video {
+    object-fit: contain;
+}
+
+/* Espelhar só a própria câmera, pra parecer um espelho. Tela espelhada seria ilegível. */
+.tile--mirror video {
+    transform: scaleX(-1);
+}
+
+.tile__avatar {
+    display: grid;
+    place-items: center;
+    width: 100%;
+    height: 100%;
+    background: var(--bg-sidebar);
+}
+
+/* Dimensionado por container query em vez de px fixo: o avatar acompanha o tile, que
+   varia muito entre um grid de 2 e um tile em foco ocupando a tela. */
+.tile__avatar .avatar {
+    width: clamp(36px, 45%, 96px);
+    aspect-ratio: 1;
+    height: auto;
+    font-size: clamp(0.7rem, 2.2vw, 1.6rem);
+}
+
+.tile__footer {
+    position: absolute;
+    inset: auto 8px 8px 8px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    pointer-events: none;
+}
+
+.tile__name {
+    max-width: 100%;
+    padding: 2px 8px;
+    border-radius: var(--r-sm);
+    background: rgba(0, 0, 0, 0.65);
+    font-size: 0.8rem;
+    color: var(--text-strong);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.tile__badges {
+    display: flex;
+    gap: 4px;
+}
+
+.badge {
+    display: grid;
+    place-items: center;
+    width: 22px;
+    height: 22px;
+    border-radius: var(--r-sm);
+    background: rgba(0, 0, 0, 0.65);
+    color: var(--danger);
+}
+
+.tile__quality {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    display: grid;
+    place-items: center;
+    width: 22px;
+    height: 22px;
+    border-radius: var(--r-sm);
+    background: rgba(0, 0, 0, 0.55);
+    pointer-events: none;
+}
+
+/* Só o que está RUIM merece um selo. Qualidade boa não precisa de aviso, e "unknown" é o
+   estado normal nos primeiros segundos de conexão - mostrar os dois deixava um ícone de
+   sinal permanente em cima de todo tile, que é ruído e não informação. */
+.tile__quality[data-quality="excellent"],
+.tile__quality[data-quality="good"],
+.tile__quality[data-quality="unknown"] {
+    display: none;
+}
+
+.tile__quality[data-quality="poor"] {
+    color: var(--warn);
+}
+
+.tile__quality[data-quality="lost"] {
+    color: var(--danger);
+}
+
+.tile__quality[data-quality="unknown"] {
+    color: var(--text-muted);
+}
+
+/* ---------------------------------------------------------------- modo foco */
+
+/* Clicar num tile de vídeo fixa ele em destaque; os outros viram uma tira de miniaturas
+   embaixo. O grid vira flex porque "flex: 1 0 100%" no tile focado força a quebra de
+   linha, e o resto do wrap sobra naturalmente pra linha seguinte. */
+.stage--focused {
+    display: flex;
+    flex-wrap: wrap;
+    align-content: flex-start;
+}
+
+.stage--focused .tile {
+    flex: 0 0 140px;
+}
+
+.stage--focused .tile--focused {
+    order: -1;
+    flex: 1 0 100%;
+    aspect-ratio: auto;
+    /* 158px = altura da tira de miniaturas (140px / (16/9) ≈ 79px) + gaps + padding. */
+    height: calc(100% - 158px);
+    min-height: 180px;
+}
+
+@media (max-width: 600px) {
+    /* DUAS colunas, não uma. Com uma coluna, três participantes num stage de ~45% da
+       altura viram três fatias de tile empilhadas e ilegíveis - dá pra rolar, mas não dá
+       pra ver ninguém. Dois por linha cabem de verdade. */
+    .stage {
+        grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+        gap: 6px;
+        padding: 8px;
+    }
+
+    .stage--focused .tile {
+        flex: 0 0 100px;
+    }
+
+    .stage--focused .tile--focused {
+        height: calc(100% - 120px);
+    }
+}
