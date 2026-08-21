@@ -284,11 +284,16 @@ function appendChatMessage(chatMessage, participant) {
 function handleTrackAdded(track, publication, participant) {
     ensureTile(participant.identity, displayNameFor(participant), { local: participant.isLocal });
     if (track.kind === Track.Kind.Audio) {
-        const tile = document.getElementById(`tile-${participant.identity}`);
-        const video = tile?.querySelector('video');
-        if (video) {
-            track.attach(video);
-            tryPlay(video);
+        // Nunca anexar a própria track de áudio: attach() da lib desmuta o elemento
+        // internamente (element.muted = false sempre que a stream ganha uma track de
+        // áudio), o que sobrescreveria o video.muted=true do tile local e causaria eco.
+        if (!participant.isLocal) {
+            const tile = document.getElementById(`tile-${participant.identity}`);
+            const video = tile?.querySelector('video');
+            if (video) {
+                track.attach(video);
+                tryPlay(video);
+            }
         }
     } else {
         refreshParticipantVideo(participant);
