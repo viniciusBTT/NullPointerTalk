@@ -10,17 +10,6 @@ services:
     network_mode: host
     environment:
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-}
-      # URL HTTP do LiveKit pras chamadas servidor->servidor da presenca (RoomService,
-      # API Twirp na mesma :7880 da sinalizacao). Fica AQUI e nao no
-      # application-vps.properties de proposito: aquele arquivo tem a copia da VPS
-      # divergente com as credenciais reais, entao um commit que o toque quebra o
-      # "git pull" do deploy. Isto e' versionado e nao carrega segredo nenhum.
-      #
-      # Loopback porque app e livekit rodam com network_mode: host na MESMA maquina.
-      # Sem isso o backend derivaria de livekit.url e, em producao, daria a volta pelo
-      # DNS publico + nginx + TLS a cada 1,5s pra falar com o processo vizinho - e a
-      # presenca cairia junto se o certificado vencesse.
-      LIVEKIT_API_URL: ${LIVEKIT_API_URL:-http://localhost:7880}
     depends_on:
       - postgres
       - mongo
