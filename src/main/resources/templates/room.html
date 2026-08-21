@@ -24,9 +24,25 @@
         <span>Acessando câmera e microfone…</span>
     </div>
 
-    <main id="video-grid" class="video-grid">
-        <!-- tiles de vídeo são inseridos aqui via room.js -->
-    </main>
+    <div class="room-main">
+        <main id="video-grid" class="video-grid">
+            <!-- tiles de vídeo são inseridos aqui via room.js -->
+        </main>
+
+        <aside id="chat-panel" class="chat-panel hidden">
+            <div class="chat-panel__header">
+                <span>Chat</span>
+                <button id="close-chat" class="chat-panel__close" type="button" title="Fechar chat">×</button>
+            </div>
+            <div id="chat-messages" class="chat-panel__messages">
+                <!-- mensagens são inseridas aqui via room.js -->
+            </div>
+            <form id="chat-form" class="chat-panel__form">
+                <input id="chat-input" type="text" placeholder="Mensagem…" maxlength="500" autocomplete="off">
+                <button type="submit" class="btn btn--primary chat-panel__send">Enviar</button>
+            </form>
+        </aside>
+    </div>
 
     <div class="device-bar">
         <label class="device-select">🎙️
@@ -44,6 +60,8 @@
         <button id="toggle-mic" class="control-btn" type="button" title="Mutar/desmutar microfone">🎤</button>
         <button id="toggle-camera" class="control-btn" type="button" title="Ligar/desligar câmera">📷</button>
         <button id="toggle-screen" class="control-btn" type="button" title="Compartilhar tela">🖥️</button>
+        <button id="toggle-listen-along" class="control-btn" type="button" title="Ouvir junto (compartilhar áudio de uma aba)">🎧</button>
+        <button id="toggle-chat" class="control-btn" type="button" title="Abrir/fechar chat">💬</button>
         <button id="leave-room" class="control-btn control-btn--danger" type="button" title="Sair da sala">📞</button>
     </footer>
 

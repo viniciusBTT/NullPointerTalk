@@ -6,10 +6,11 @@ import {
     listVideoDevices,
     supportsAudioOutputSelection,
 } from './media.js';
-import { getScreenStream } from './screenshare.js';
+import { getScreenStream, getTabAudioStream } from './screenshare.js';
 import { showToast, showBanner } from './ui-feedback.js';
 
 const USERNAME_KEY = 'npt.username';
+const LISTEN_ALONG_TRACK_NAME = 'listen_along_audio';
 
 const body = document.body;
 const roomId = body.dataset.roomId;
@@ -28,22 +29,31 @@ const roomLoading = document.getElementById('room-loading');
 const micBtn = document.getElementById('toggle-mic');
 const cameraBtn = document.getElementById('toggle-camera');
 const screenBtn = document.getElementById('toggle-screen');
+const listenAlongBtn = document.getElementById('toggle-listen-along');
+const chatBtn = document.getElementById('toggle-chat');
 const leaveBtn = document.getElementById('leave-room');
 const micSelect = document.getElementById('mic-select');
 const speakerSelect = document.getElementById('speaker-select');
 const cameraSelect = document.getElementById('camera-select');
 const enableAudioBtn = document.getElementById('enable-audio-btn');
-const controlButtons = [micBtn, cameraBtn, screenBtn];
+const chatPanel = document.getElementById('chat-panel');
+const closeChatBtn = document.getElementById('close-chat');
+const chatMessages = document.getElementById('chat-messages');
+const chatForm = document.getElementById('chat-form');
+const chatInput = document.getElementById('chat-input');
+const controlButtons = [micBtn, cameraBtn, screenBtn, listenAlongBtn];
 
 let room;
 let localStream; // captura combinada (1 só permissão) - mic vai publicado, câmera fica só "quente" até ligar
 let micTrack;
 let cameraTrack;
 let screenStream = null;
+let listenAlongStream = null;
 let micEnabled = true;
 let cameraEnabled = false; // câmera começa desligada - usuário liga manualmente ao entrar
 let leaving = false;
 let focusedTileId = null;
+let chatOpen = false;
 
 // Última track de vídeo (câmera OU tela) efetivamente exibida em cada tile - evita anexar
 // duas tracks de vídeo simultâneas no mesmo <video> (só a primeira seria renderizada).
@@ -140,13 +150,14 @@ function toggleFocusedTile(tileId) {
     setFocusedTile(focusedTileId === tileId ? null : tileId);
 }
 
-function setTileBadges(tileId, { audioEnabled, videoEnabled }) {
+function setTileBadges(tileId, { audioEnabled, videoEnabled, listening }) {
     const tile = document.getElementById(`tile-${tileId}`);
     if (!tile) {
         return;
     }
     tile.querySelector('.badge--mic-off')?.classList.toggle('hidden', audioEnabled);
     tile.querySelector('.badge--camera-off')?.classList.toggle('hidden', videoEnabled);
+    tile.classList.toggle('video-tile--listening', listening);
 }
 
 const QUALITY_LABELS = {
@@ -211,9 +222,11 @@ function refreshParticipantVideo(participant) {
 function refreshParticipantBadges(participant) {
     const micPub = participant.getTrackPublication(Track.Source.Microphone);
     const camPub = participant.getTrackPublication(Track.Source.Camera);
+    const listenPub = participant.getTrackPublicationByName(LISTEN_ALONG_TRACK_NAME);
     setTileBadges(participant.identity, {
         audioEnabled: !!micPub && !micPub.isMuted,
         videoEnabled: !!camPub && !camPub.isMuted,
+        listening: !!listenPub && !listenPub.isMuted,
     });
 }
 
@@ -222,6 +235,50 @@ function displayNameFor(participant) {
         return `${name} (você)`;
     }
     return participant.name || 'Participante';
+}
+
+function setChatOpen(open) {
+    chatOpen = open;
+    chatPanel.classList.toggle('hidden', !open);
+    chatBtn.classList.toggle('is-active', open);
+    if (open) {
+        chatBtn.classList.remove('has-unread');
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+        chatInput.focus();
+    }
+}
+
+// Mesmo handler renderiza mensagens locais e remotas - sendChatMessage já dispara
+// RoomEvent.ChatMessage pro próprio remetente, sem precisar ecoar manualmente na UI.
+function appendChatMessage(chatMessage, participant) {
+    const item = document.createElement('div');
+    item.className = 'chat-message';
+    item.classList.toggle('chat-message--own', participant.isLocal);
+
+    const meta = document.createElement('div');
+    meta.className = 'chat-message__meta';
+    const author = document.createElement('span');
+    author.className = 'chat-message__author';
+    author.textContent = displayNameFor(participant);
+    const time = document.createElement('span');
+    time.className = 'chat-message__time';
+    time.textContent = new Date(chatMessage.timestamp).toLocaleTimeString('pt-BR', {
+        hour: '2-digit',
+        minute: '2-digit',
+    });
+    meta.append(author, time);
+
+    const body = document.createElement('div');
+    body.className = 'chat-message__body';
+    body.textContent = chatMessage.message; // textContent, nunca innerHTML - mensagem vem de outro participante
+
+    item.append(meta, body);
+    chatMessages.appendChild(item);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+
+    if (!chatOpen && !participant.isLocal) {
+        chatBtn.classList.add('has-unread');
+    }
 }
 
 function handleTrackAdded(track, publication, participant) {
@@ -282,6 +339,8 @@ function wireRoomEvents() {
     room.on(RoomEvent.ConnectionQualityChanged, (quality, participant) => {
         setTileStatus((participant ?? room.localParticipant).identity, quality);
     });
+
+    room.on(RoomEvent.ChatMessage, (message, participant) => appendChatMessage(message, participant));
 
     room.on(RoomEvent.Reconnecting, () => {
         connectionStatus.textContent = 'conexão: reconectando…';
@@ -514,10 +573,66 @@ async function stopScreenShare() {
     cameraSelect.disabled = false;
 }
 
+listenAlongBtn.addEventListener('click', async () => {
+    if (listenAlongStream) {
+        await stopListenAlong();
+        return;
+    }
+    let stream;
+    try {
+        stream = await getTabAudioStream();
+    } catch (error) {
+        if (error.name === 'NoTabAudioError') {
+            showToast(error.message, { type: 'error' });
+        }
+        return; // usuário cancelou o seletor nativo (ou erro genérico) - mesmo padrão do compartilhamento de tela
+    }
+    listenAlongStream = stream;
+    const audioTrack = listenAlongStream.getAudioTracks()[0];
+    await room.localParticipant.publishTrack(audioTrack, {
+        source: Track.Source.Unknown,
+        name: LISTEN_ALONG_TRACK_NAME,
+    });
+    audioTrack.addEventListener('ended', () => stopListenAlong());
+    listenAlongBtn.classList.add('is-active');
+});
+
+async function stopListenAlong() {
+    if (!listenAlongStream) {
+        return;
+    }
+    const audioTrack = listenAlongStream.getAudioTracks()[0];
+    if (audioTrack) {
+        await room.localParticipant.unpublishTrack(audioTrack);
+    }
+    stopStream(listenAlongStream);
+    listenAlongStream = null;
+    listenAlongBtn.classList.remove('is-active');
+}
+
+chatBtn.addEventListener('click', () => setChatOpen(!chatOpen));
+closeChatBtn.addEventListener('click', () => setChatOpen(false));
+
+chatForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const text = chatInput.value.trim();
+    if (!text || !room) {
+        return;
+    }
+    chatInput.value = '';
+    try {
+        await room.localParticipant.sendChatMessage(text);
+    } catch (error) {
+        console.error('Falha ao enviar mensagem', error);
+        showToast('Falha ao enviar mensagem', { type: 'error' });
+    }
+});
+
 leaveBtn.addEventListener('click', () => {
     leaving = true;
     room?.disconnect();
     if (screenStream) stopStream(screenStream);
+    if (listenAlongStream) stopStream(listenAlongStream);
     if (localStream) stopStream(localStream);
     // Pequeno atraso antes de navegar: em algumas combinações de SO/driver a câmera não é
     // liberada instantaneamente após track.stop(), e uma navegação imediata pode fazer a
@@ -531,6 +646,7 @@ window.addEventListener('beforeunload', () => {
     leaving = true;
     room?.disconnect();
     if (screenStream) stopStream(screenStream);
+    if (listenAlongStream) stopStream(listenAlongStream);
     if (localStream) stopStream(localStream);
 });
 
