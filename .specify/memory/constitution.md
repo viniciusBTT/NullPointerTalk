@@ -1,5 +1,18 @@
 <!--
 Sync Impact Report
+- Version change: 1.0.0 → 1.1.0
+- Modified principles: n/a
+- Added sections:
+  - Governance: novo item "Idioma de comunicação" (comunicação de assistentes/agentes de IA
+    sobre o projeto DEVE ser sempre em pt-BR)
+- Removed sections: none
+- Deferred placeholders: none
+- Templates checked:
+  - .specify/templates/plan-template.md — has a generic "Constitution Check" gate; no
+    principle-specific text to sync, no edit needed (out of scope for this command regardless).
+- Follow-up TODOs: none
+
+Sync Impact Report (1.0.0, initial ratification)
 - Version change: (template, unratified) → 1.0.0
 - Modified principles: n/a (initial ratification)
 - Added sections:
@@ -12,10 +25,6 @@ Sync Impact Report
   - Governance
 - Removed sections: none (previous file was the unfilled template scaffold)
 - Deferred placeholders: none
-- Templates checked:
-  - .specify/templates/plan-template.md — has a generic "Constitution Check" gate; no
-    principle-specific text to sync, no edit needed (out of scope for this command regardless).
-- Follow-up TODOs: none
 -->
 
 # NullPointerTalk Constitution
@@ -124,6 +133,12 @@ Se o código existente divergir de um princípio aqui registrado, a divergência
 explicitamente — atualizando o princípio (se o código estiver certo e o princípio desatualizado)
 ou o código (se o princípio estiver certo) — nunca deixando os dois divergentes silenciosamente.
 
+**Idioma de comunicação**: toda comunicação de assistentes/agentes de IA (ex.: Claude Code)
+relacionada a este projeto — respostas de chat, mensagens de commit geradas por IA, documentação
+de decisões (`docs/projeto/`, `docs/conceito/`) e artefatos do Spec Kit (spec, plan, tasks,
+clarify, checklists etc.) — DEVE ser sempre em português brasileiro (pt-BR), independentemente
+do idioma em que o pedido do usuário for escrito.
+
 **Emendas**: qualquer mudança a este documento requer descrever a mudança e sua motivação,
 incrementar a versão conforme a política de SemVer abaixo, e atualizar a data de "Last Amended".
 
@@ -137,4 +152,4 @@ incrementar a versão conforme a política de SemVer abaixo, e atualizar a data 
 implementar persistência poliglota, CRUD de salas), revisitar se os princípios ainda refletem a
 prática do projeto — atualizar este documento em vez de deixá-lo defasado.
 
-**Version**: 1.0.0 | **Ratified**: 2026-08-25 | **Last Amended**: 2026-08-25
+**Version**: 1.1.0 | **Ratified**: 2026-08-25 | **Last Amended**: 2026-08-25
