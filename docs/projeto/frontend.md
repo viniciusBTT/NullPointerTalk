@@ -68,6 +68,7 @@ O controle é unidirecional: a UI chama métodos em `session`/`audioSink`/`chatS
 - **Presença**: o canal em que a pessoa está vem dos eventos do LiveKit (instantâneos); os **outros** canais vêm do polling de `GET /api/presence`. Isso tira o poll do caminho crítico de latência. Ver [`docs/projeto/backend.md`](backend.md).
 - **Ícones**: sprite SVG inlinado, com `stroke="currentColor"` — estado (mutado = vermelho, ativo = accent) é só trocar a cor do container, sem um ícone por estado. Inlinado e não em arquivo externo porque `<use>` externo cria uma shadow tree que o CSS do documento não alcança.
 - **Zero `innerHTML` no codebase.** Todo texto passa por `lib/dom.js` (`el({ text })` → `textContent`). É uma invariante muito mais fácil de revisar que "innerHTML só pra string estática".
+- **Ícone de sala**: escolhido por uma modal (`ui/icon-picker.js`) sobre uma grade estática de emojis curados (`ROOM_ICON_CATALOG`, uma constante JS, sem endpoint nem tabela no Postgres). O `<input id="room-form-icon">` continua sendo a única fonte de verdade do valor — a modal só lê esse valor para destacar a opção correspondente ao abrir, e escreve nele ao escolher uma opção — o que preserva de graça ícones legados fora do catálogo (o input mantém qualquer texto livre já salvo) e o cancelamento sem efeito (fechar sem escolher nada nunca escreve no input).
 
 ## Chat persistido e não-lidas entre reloads
 

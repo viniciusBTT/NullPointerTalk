@@ -23,6 +23,7 @@ import { initSettingsModal } from './ui/settings-modal.js';
 import { initParticipantPopover } from './ui/participant-popover.js';
 import { initNameGate } from './ui/name-gate.js';
 import { initRoomAdmin } from './ui/room-admin.js';
+import { initIconPicker } from './ui/icon-picker.js';
 
 import { showToast, showBanner } from './lib/ui-feedback.js';
 import { setIcon } from './lib/icons.js';
@@ -86,6 +87,15 @@ function boot(displayName) {
     // sincronizado depois (criação/edição/exclusão, inclusive vindas de outra aba).
     rooms.forEach((room) => sidebar.addChannel(room));
 
+    const iconPicker = initIconPicker({
+        root: $('icon-picker-modal'),
+        gridEl: $('icon-picker-grid'),
+        closeButtons: [...document.querySelectorAll('[data-close="icon-picker"]')],
+        onSelect: (glyph) => {
+            $('room-form-icon').value = glyph;
+        },
+    });
+
     initRoomAdmin({
         listEl: $('channel-list'),
         addButtonEl: $('btn-add-room'),
@@ -95,10 +105,12 @@ function boot(displayName) {
         idInputEl: $('room-form-id'),
         nameInputEl: $('room-form-name'),
         iconInputEl: $('room-form-icon'),
+        iconTriggerEl: $('room-form-icon-trigger'),
         errorEl: $('room-form-error'),
         submitBtnEl: $('room-form-submit'),
         closeButtons: [...document.querySelectorAll('[data-close="room-form"]')],
         roomsById,
+        openIconPicker: iconPicker.open,
         onError: (message) => showToast(message, { type: 'error' }),
     });
 

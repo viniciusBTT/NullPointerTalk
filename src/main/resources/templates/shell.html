@@ -202,7 +202,11 @@
         </label>
         <label class="field">
             <span class="field__label">Ícone (emoji)</span>
-            <input id="room-form-icon" type="text" maxlength="8" placeholder="🗨️" autocomplete="off" required>
+            <div class="field__row">
+                <input id="room-form-icon" class="field__icon-preview" type="text" maxlength="8"
+                       placeholder="🗨️" autocomplete="off" required readonly>
+                <button class="btn" type="button" id="room-form-icon-trigger">Escolher ícone</button>
+            </div>
         </label>
         <p class="field__error hidden" id="room-form-error"></p>
         <div class="modal__footer">
@@ -210,6 +214,18 @@
             <button class="btn btn--primary" type="submit" id="room-form-submit">Criar</button>
         </div>
     </form>
+</div>
+
+<div class="modal hidden" id="icon-picker-modal">
+    <div class="modal__card">
+        <div class="modal__header">
+            <h2>Escolher ícone</h2>
+            <button class="icon-btn icon-btn--sm" type="button" data-close="icon-picker" title="Fechar">
+                <svg class="icon" width="18" height="18" aria-hidden="true"><use href="#npt-close"></use></svg>
+            </button>
+        </div>
+        <div class="icon-picker__grid" id="icon-picker-grid"></div>
+    </div>
 </div>
 
 <!--/*

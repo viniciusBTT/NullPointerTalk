@@ -198,6 +198,35 @@ select:disabled {
     color: var(--text);
 }
 
+.field__row {
+    display: flex;
+    align-items: stretch;
+    gap: 0.6rem;
+}
+
+.field__row .btn {
+    flex: 1;
+}
+
+/* Prévia do ícone escolhido: quadrado do tamanho do botão ao lado, não um input de texto
+   comum - por isso largura fixa (não cresce) e o emoji grande e centralizado. A borda
+   tracejada vs. sólida usa :placeholder-shown (sem JS extra) pra deixar óbvio se já foi
+   escolhido um ícone ou não. */
+.field__icon-preview {
+    flex: 0 0 2.75rem;
+    width: 2.75rem;
+    padding: 0;
+    text-align: center;
+    font-size: 1.4rem;
+    background: var(--bg-elevated);
+    border: 1px dashed var(--text-muted);
+}
+
+.field__icon-preview:not(:placeholder-shown) {
+    border-style: solid;
+    border-color: var(--accent);
+}
+
 .field__error {
     margin: -0.6rem 0 1rem;
     font-size: 0.8rem;

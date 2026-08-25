@@ -55,6 +55,34 @@
     margin-top: 20px;
 }
 
+/* ---------------------------------------------------------------- grade de ícones */
+
+/* auto-fill quebra em mais linhas conforme a largura disponível - já cobre telas estreitas
+   sem precisar de uma media query própria (Edge Case / Cenário 5 do quickstart). */
+.icon-picker__grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(48px, 1fr));
+    gap: 8px;
+}
+
+.icon-picker__option {
+    display: grid;
+    place-items: center;
+    aspect-ratio: 1;
+    border: none;
+    border-radius: var(--r-sm);
+    background: var(--bg-elevated);
+    font-size: 1.4rem;
+}
+
+.icon-picker__option:hover {
+    background: var(--bg-hover);
+}
+
+.icon-picker__option.is-selected {
+    background: var(--accent);
+}
+
 /* ---------------------------------------------------------------- popover de participante */
 
 .popover {

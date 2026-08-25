@@ -17,10 +17,12 @@ export function initRoomAdmin({
     idInputEl,
     nameInputEl,
     iconInputEl,
+    iconTriggerEl,
     errorEl,
     submitBtnEl,
     closeButtons,
     roomsById,
+    openIconPicker,
     onError,
 }) {
     let editingRoomId = null;
@@ -73,6 +75,7 @@ export function initRoomAdmin({
 
     addButtonEl.addEventListener('click', openCreate);
     closeButtons.forEach((button) => button.addEventListener('click', hide));
+    iconTriggerEl.addEventListener('click', () => openIconPicker(iconInputEl.value));
 
     // Delegado no container: as linhas de canal são criadas/removidas em runtime (ver
     // sidebar.js), então um listener por linha teria que ser religado a cada CRUD.
@@ -113,6 +116,12 @@ export function initRoomAdmin({
     formEl.addEventListener('submit', async (event) => {
         event.preventDefault();
         hideError();
+        if (!iconInputEl.value.trim()) {
+            // required nativo não basta: o input é readonly, e navegadores isentam
+            // campos readonly da validação de constraint (ver FR-007).
+            showError('Escolha um ícone para a sala.');
+            return;
+        }
         const body = {
             name: nameInputEl.value.trim(),
             icon: iconInputEl.value.trim(),
