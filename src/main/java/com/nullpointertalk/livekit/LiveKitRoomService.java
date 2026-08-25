@@ -140,6 +140,20 @@ public class LiveKitRoomService implements LiveKitRooms {
         return participants;
     }
 
+    @Override
+    public void deleteRoom(String roomId) {
+        String body = objectMapper.writeValueAsString(
+                objectMapper.createObjectNode().put("room", roomId));
+        try {
+            post("DeleteRoom", body, tokenService.createRoomCreateToken());
+        } catch (LiveKitApiException e) {
+            // Melhor esforco: sala que ninguem nunca entrou nao existe no LiveKit, e
+            // apagar o registro no Postgres/Mongo ja e' o que importa nesse caso.
+            log.info("DeleteRoom no LiveKit falhou pra '{}' (ok se a sala nunca teve gente): {}",
+                    roomId, e.getMessage());
+        }
+    }
+
     private JsonNode post(String method, String jsonBody, String bearerToken) {
         HttpRequest request = HttpRequest.newBuilder(URI.create(apiBaseUrl + TWIRP_PREFIX + method))
                 // Obrigatorio: sem timeout por requisicao o cliente do JDK espera o socket

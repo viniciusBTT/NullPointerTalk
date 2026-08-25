@@ -25,4 +25,12 @@ public interface LiveKitRooms {
 
     /** Participantes ativos de uma sala. */
     List<LiveKitParticipant> listParticipants(String roomId);
+
+    /**
+     * Apaga a sala no LiveKit, derrubando quem estiver conectado com
+     * DisconnectReason.ROOM_DELETED (o cliente distingue isso de uma queda de rede
+     * normal). Melhor esforco: uma sala que o LiveKit nunca criou (ninguem entrou ainda)
+     * nao e' erro, so nao tem o que apagar.
+     */
+    void deleteRoom(String roomId);
 }

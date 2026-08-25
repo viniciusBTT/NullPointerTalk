@@ -18,14 +18,6 @@
     justify-content: flex-end;
 }
 
-.chat__notice {
-    margin: 0 0 12px;
-    padding: 8px 12px;
-    border-radius: var(--r-md);
-    background: var(--bg-rail);
-    font-size: 0.78rem;
-    color: var(--text-muted);
-}
 
 .chat__empty {
     display: grid;

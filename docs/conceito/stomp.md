@@ -19,21 +19,36 @@ Com WebSocket puro, você teria que reimplementar esse roteamento manualmente (o
 ```
 StompConfig:
   @EnableWebSocketMessageBroker
-  endpoint /ws/chat (com fallback SockJS para navegadores sem WebSocket)
-  broker simples em memória habilitado para /topic e /queue
+  endpoint /ws/chat
+  broker simples em memória habilitado para /topic
 
 ChatController:
   @MessageMapping("/chat/{roomId}")
-  @SendTo("/topic/room/{roomId}")
-  recebe a mensagem, salva no MongoDB (ChatMessage), retorna pra ser
-  distribuída a todos os assinantes da sala
+  recebe a mensagem, valida que a sala existe, salva no MongoDB
+  (via ChatService) e distribui manualmente com
+  SimpMessagingTemplate.convertAndSend("/topic/room/{roomId}", ...)
 ```
 
-No frontend, o cliente STOMP (`@stomp/stompjs`, com fallback `sockjs-client`) se conecta em `/ws/chat`, assina o tópico da sala atual e publica mensagens digitadas pelo usuário.
+**Desvio de propósito em relação ao `@SendTo`**: a implementação real usa
+`SimpMessagingTemplate.convertAndSend` manual em vez de `@SendTo("/topic/room/{roomId}")` no
+método do controller. A diferença importa num caso: com `@SendTo`, QUALQUER retorno do método
+vira broadcast automaticamente - não dá pra "descartar em silêncio" uma mensagem para uma sala
+desconhecida ou que falhou validação sem ainda assim distribuir alguma coisa. Com
+`convertAndSend` manual, o método pode simplesmente `return` cedo (sem chamar `convertAndSend`)
+nesses casos, e nada é distribuído.
 
-## SockJS: por que o fallback
+**Sem fallback SockJS**: o projeto não tem nenhuma concessão a navegador antigo em lugar
+nenhum (o próprio LiveKit já exige WebSocket nativo pra sinalização), então vendorizar uma
+segunda lib (`sockjs-client`) só pra um fallback que nada mais no app precisa não compensou.
 
-Nem todo ambiente de rede permite WebSocket puro (proxies antigos, alguns firewalls corporativos). SockJS tenta WebSocket primeiro e cai para polling HTTP se não conseguir — o cliente e o servidor concordam em usar essa camada de compatibilidade sem você precisar tratar isso manualmente.
+No frontend, o cliente STOMP (`@stomp/stompjs`, vendorizado como UMD em `js/vendor/stomp.umd.min.js`
+- ver `js/vendor/README.md`) se conecta em `/ws/chat`, assina o tópico de **todas** as salas do
+catálogo já ao conectar (não só a atualmente aberta - é o que permite badge de não-lida em
+salas onde a pessoa não está) e publica mensagens digitadas pelo usuário.
+
+## SockJS: por que NÃO tem fallback aqui
+
+Nem todo ambiente de rede permite WebSocket puro (proxies antigos, alguns firewalls corporativos) - é pra isso que SockJS existiria: tentar WebSocket primeiro e cair para polling HTTP se não conseguir. Mas este projeto especificamente decidiu não vendorizar essa segunda lib: o próprio LiveKit já exige WebSocket nativo pra sinalização de voz/vídeo em todo lugar, então o app já não tem nenhuma concessão a navegador/rede antiga - adicionar SockJS só pro chat compraria compatibilidade que nada mais na aplicação garante.
 
 ## Referências
 

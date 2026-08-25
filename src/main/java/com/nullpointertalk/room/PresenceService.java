@@ -24,7 +24,7 @@ public class PresenceService {
 
     private static final Logger log = LoggerFactory.getLogger(PresenceService.class);
 
-    private final RoomCatalog roomCatalog;
+    private final RoomDirectory roomCatalog;
     private final LiveKitRooms liveKit;
     private final long okTtlNanos;
     private final long failTtlNanos;
@@ -32,7 +32,7 @@ public class PresenceService {
     private final AtomicReference<Snapshot> cache = new AtomicReference<>();
     private final ReentrantLock refreshLock = new ReentrantLock();
 
-    public PresenceService(RoomCatalog roomCatalog,
+    public PresenceService(RoomDirectory roomCatalog,
             LiveKitRooms liveKit,
             @Value("${livekit.presence-cache-ms:1500}") long cacheMs,
             @Value("${livekit.presence-failure-cache-ms:5000}") long failureCacheMs) {

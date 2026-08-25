@@ -1,14 +1,33 @@
 /**
  * A lista de canais e quem está em cada um.
  *
- * As linhas de canal vêm renderizadas pelo servidor (o catálogo é fixo no código), então
- * este módulo só preenche os participantes, o badge de não-lidas e o estado ativo. Não
- * recria a lista — nunca precisa.
+ * Com o CRUD de salas, a lista deixou de ser fixa: addChannel/removeChannel/renameChannel
+ * constroem/atualizam a mesma estrutura que o Thymeleaf costumava renderizar uma vez só
+ * (ver shell.html - o <ul id="channel-list"> nasce vazio agora, e app.js popula via
+ * addChannel no boot). router.bindLinks já usa um listener DELEGADO no container, então
+ * uma linha nova fica clicável sem nenhum rebind.
  */
 
 import { el, clear } from '../lib/dom.js';
 import { icon } from '../lib/icons.js';
 import { avatarElement } from '../lib/avatar.js';
+
+function channelRow(room) {
+    return el('li', { class: 'channel', dataset: { roomId: room.id } },
+        el('a', { class: 'channel__link', href: `/room/${encodeURIComponent(room.id)}` },
+            el('span', { class: 'channel__icon', text: room.icon }),
+            el('span', { class: 'channel__name', text: room.name }),
+            el('span', { class: 'channel__spinner', 'aria-hidden': 'true' }),
+            el('span', { class: 'channel__unread hidden', text: '0' })),
+        // Fora do <a> de propósito: são <button>, então router.bindLinks (que só resolve
+        // cliques em `a[href]`) nunca os intercepta - não precisa de stopPropagation.
+        el('span', { class: 'channel__actions' },
+            el('button', { class: 'channel__edit', type: 'button', title: 'Editar sala' },
+                icon('edit', { size: 14 })),
+            el('button', { class: 'channel__delete', type: 'button', title: 'Apagar sala' },
+                icon('trash', { size: 14 }))),
+        el('ul', { class: 'channel__members' }));
+}
 
 export function initSidebar({ listEl, noticeEl, onParticipantClick }) {
     let activeRoomId = null;
@@ -30,6 +49,26 @@ export function initSidebar({ listEl, noticeEl, onParticipantClick }) {
 
     function channelNode(roomId) {
         return listEl.querySelector(`.channel[data-room-id="${cssEscape(roomId)}"]`);
+    }
+
+    function addChannel(room) {
+        if (channelNode(room.id)) {
+            return; // ja existe (ex: reaproveitando o mesmo id logo depois de apagar)
+        }
+        listEl.appendChild(channelRow(room));
+    }
+
+    function removeChannel(roomId) {
+        channelNode(roomId)?.remove();
+    }
+
+    function renameChannel(roomId, { name, icon: roomIcon }) {
+        const node = channelNode(roomId);
+        if (!node) {
+            return;
+        }
+        node.querySelector('.channel__icon').textContent = roomIcon;
+        node.querySelector('.channel__name').textContent = name;
     }
 
     function setActiveChannel(roomId) {
@@ -105,7 +144,17 @@ export function initSidebar({ listEl, noticeEl, onParticipantClick }) {
         });
     }
 
-    return { setActiveChannel, setConnecting, setUnread, setPresence, setSpeaking, get activeRoomId() { return activeRoomId; } };
+    return {
+        addChannel,
+        removeChannel,
+        renameChannel,
+        setActiveChannel,
+        setConnecting,
+        setUnread,
+        setPresence,
+        setSpeaking,
+        get activeRoomId() { return activeRoomId; },
+    };
 }
 
 /**

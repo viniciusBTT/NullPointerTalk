@@ -56,12 +56,15 @@ Repositório único (sem subpasta `backend/`, sem frontend separado): o Spring B
 - **Thymeleaf + JS puro** em vez de um SPA (React/Vite) — sem necessidade de build ou estado global para uma tela de vídeo com salas fixas. Um módulo Maven só, sem CORS a configurar. O roteamento passou a ser no cliente (ver abaixo), mas isso custou ~60 linhas de History API, não um framework.
 - **Shell persistente numa página só** (`GET /` e `GET /room/{id}` renderizam o mesmo template) — trocar de canal com reload custava nova permissão de mídia, chat zerado e uma espera artificial pela liberação da webcam. Sem reload, o `MediaStream` local é capturado uma vez e republicado, e a lista de canais nunca sai da tela. Ver [`docs/projeto/frontend.md`](frontend.md).
 - **Polling de presença em vez de webhook + SSE** — os webhooks do LiveKit não têm garantia de entrega, então um `participant_left` perdido deixaria um fantasma permanente na sidebar e obrigaria a construir reconciliação periódica de qualquer forma. Somado a: uma terceira cópia da API key (no `livekit.yaml`, cujo `keys:` já é sobrescrito pelo `.env`), verificação de assinatura escrita à mão, e um mapa em memória que voltaria vazio a cada deploy. Com o cache single-flight, o polling custa ≤1 requisição em loopback por 1,5s independente de quantos navegadores estejam olhando.
-- **Salas fixas no código** — sem CRUD, sem persistência ainda; o LiveKit cria a sala automaticamente no primeiro join, usando o `id` do `RoomCatalog` como nome da sala.
+- **Salas com CRUD, persistidas no Postgres** (`Room`/`RoomRepository`) — aberto a qualquer visitante, sem login (mesma filosofia do resto do app). `RoomSeeder` garante duas salas padrão (`estudos`, `jogos`) na primeira subida. O LiveKit continua criando a sala automaticamente no primeiro join, usando o `id` como nome; apagar uma sala chama `RoomService.DeleteRoom` (Twirp) pra derrubar quem estiver conectado.
 
-## Próxima fase (não implementada ainda)
+## Persistência poliglota (implementada)
 
-- **Histórico de chat** — o chat de texto **já funciona**, pelo canal de dados do próprio LiveKit (`sendChatMessage`/`RoomEvent.ChatMessage`), já que a conexão de mídia existe de qualquer forma. O que falta é persistência: hoje só aparecem as mensagens enviadas enquanto a pessoa estava no canal, e não há como acumular não-lidas de canais em que ela não está. Isso exige backend — STOMP + MongoDB, ver [`docs/conceito/stomp.md`](../conceito/stomp.md).
-- **Persistência poliglota** — Postgres para dados relacionais (Room/Participant, se fizer sentido) e MongoDB para o histórico de chat. Ver [`docs/conceito/persistencia-poliglota.md`](../conceito/persistencia-poliglota.md). A autoconfiguração de JPA/Mongo está desligada em `application.properties` até essa fase entrar (ver [`docs/projeto/backend.md`](backend.md)).
+Postgres para `Room` (dado relacional, CRUD com integridade simples) e MongoDB para
+`ChatMessage` (histórico append-only, cap de 250 mensagens por sala). Ver
+[`docs/conceito/persistencia-poliglota.md`](../conceito/persistencia-poliglota.md) e
+[`docs/projeto/backend.md`](backend.md). O chat de texto roda inteiramente por STOMP
+(`docs/conceito/stomp.md`) — não usa mais o canal de dados do LiveKit.
 
 ## Deploy na VPS (LiveKit + nginx + TLS)
 

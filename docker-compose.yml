@@ -11,9 +11,12 @@ services:
     environment:
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-}
     depends_on:
-      - postgres
-      - mongo
-      - livekit
+      postgres:
+        condition: service_healthy
+      mongo:
+        condition: service_healthy
+      livekit:
+        condition: service_started
     restart: unless-stopped
 
   livekit:
@@ -26,6 +29,7 @@ services:
     volumes:
       - ./livekit/livekit.yaml:/etc/livekit.yaml:ro
     command: ["--config", "/etc/livekit.yaml"]
+    restart: unless-stopped
 
   # Postgres (Room, Participant - dados relacionais). Credenciais aqui precisam
   # bater com spring.datasource.* em application.properties/application-vps.properties.
@@ -40,6 +44,12 @@ services:
       - "5432:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   # MongoDB (ChatMessage - historico de chat). URI precisa bater com
   # spring.data.mongodb.uri em application.properties/application-vps.properties.
@@ -50,6 +60,12 @@ services:
       - "27017:27017"
     volumes:
       - mongo-data:/data/db
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
 volumes:
   postgres-data:
