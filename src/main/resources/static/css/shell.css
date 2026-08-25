@@ -86,6 +86,65 @@
     padding: 0;
 }
 
+.channel {
+    position: relative;
+}
+
+/* Escondidos até o hover, pra não competir visualmente com o badge de não-lida - mesmo
+   padrão do Discord: editar/apagar sala não é uma ação do dia a dia. */
+.channel__actions {
+    display: none;
+    position: absolute;
+    top: 3px;
+    right: 4px;
+    gap: 2px;
+}
+
+.channel:hover .channel__actions {
+    display: flex;
+}
+
+.channel__edit,
+.channel__delete {
+    display: grid;
+    place-items: center;
+    width: 22px;
+    height: 22px;
+    border: none;
+    border-radius: var(--r-sm);
+    background: var(--bg-elevated);
+    color: var(--text-muted);
+}
+
+.channel__edit:hover {
+    color: var(--interactive-hover);
+    background: var(--bg-hover);
+}
+
+.channel__delete:hover {
+    color: var(--danger);
+    background: rgba(218, 55, 60, 0.12);
+}
+
+.sidebar__add-room {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    margin-top: 4px;
+    padding: 6px 8px;
+    border: none;
+    border-radius: var(--r-sm);
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 0.85rem;
+}
+
+.sidebar__add-room:hover {
+    background: var(--bg-hover);
+    color: var(--interactive-hover);
+}
+
 .channel__link {
     display: flex;
     align-items: center;

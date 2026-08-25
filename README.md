@@ -46,8 +46,8 @@ Para hospedar numa VPS e usar com amigos em redes diferentes (NAT real entre as 
 ## Como rodar
 
 ```bash
-docker compose up -d livekit   # servidor de mídia, uma vez só
-./mvnw spring-boot:run          # sobe em :8080
+docker compose up -d postgres mongo livekit   # Postgres, MongoDB e o servidor de mídia
+./mvnw spring-boot:run                        # sobe em :8080
 ```
 
 Abra `http://localhost:8080` em duas abas/navegadores diferentes (uma normal + uma anônima, pra ter `localStorage` separado), defina nomes diferentes, entre na mesma sala e teste vídeo e compartilhamento de tela.

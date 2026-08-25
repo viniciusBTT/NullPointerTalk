@@ -16,6 +16,7 @@ export const KEYS = {
     mutedFor: 'npt.mutedFor',
     devices: 'npt.devices',
     sounds: 'npt.sounds',
+    chatLastRead: 'npt.chatLastRead',
 };
 
 /**

@@ -24,7 +24,28 @@ import org.junit.jupiter.api.Test;
  */
 class PresenceServiceTest {
 
-    private final RoomCatalog catalog = new RoomCatalog();
+    /**
+     * Fixture de teste, sem relacao com o seed real de producao (estudos/jogos) -
+     * so precisa dos ids que estes testes ja usavam antes do catalogo virar persistido.
+     */
+    private static final class FakeRoomDirectory implements RoomDirectory {
+        private final List<RoomInfo> rooms = List.of(
+                new RoomInfo("geral", "Geral", "💬"),
+                new RoomInfo("jogos", "Jogos", "🎮"),
+                new RoomInfo("estudos", "Estudos", "📚"));
+
+        @Override
+        public List<RoomInfo> all() {
+            return rooms;
+        }
+
+        @Override
+        public RoomInfo find(String id) {
+            return rooms.stream().filter(room -> room.id().equals(id)).findFirst().orElse(null);
+        }
+    }
+
+    private final FakeRoomDirectory catalog = new FakeRoomDirectory();
 
     private static final class FakeLiveKit implements LiveKitRooms {
         final AtomicInteger listRoomsCalls = new AtomicInteger();
@@ -60,6 +81,11 @@ class PresenceServiceTest {
                 throw failure;
             }
             return List.of(new LiveKitParticipant("id-" + roomId, "Alguem em " + roomId));
+        }
+
+        @Override
+        public void deleteRoom(String roomId) {
+            // no-op: nenhum teste de presenca exercita exclusao de sala.
         }
     }
 

@@ -58,24 +58,34 @@ src/main/resources/
 
 O controle é unidirecional: a UI chama métodos em `session`/`audioSink`/`chatStore`, e eles respondem por **evento**. Nenhum módulo de UI lê o DOM de outro.
 
-- **`core/voice-session.js` é a espinha.** É o único arquivo que conhece o LiveKit. Expõe `join`/`leave`/`setMicEnabled`/`setCameraEnabled`/… e emite `statechange`, `joined`, `left`, `participants`, `tracks`, `speakers`, `chat`, `localstate`, `error`… Os objetos que ele publica (`ParticipantView`, `PubView`) são dados simples; onde a UI precisa da track de verdade (anexar num `<video>`, mudar volume), o `PubView` carrega closures `attach`/`detach`/`setVolume`. É isso que mantém a regra "só este arquivo importa `vendor/`" verificável de relance.
+- **`core/voice-session.js` é a espinha da voz.** É o único arquivo que conhece o SDK do LiveKit (áudio/vídeo/tela - o chat não passa mais por aqui, ver abaixo). Expõe `join`/`leave`/`setMicEnabled`/`setCameraEnabled`/… e emite `statechange`, `joined`, `left`, `participants`, `tracks`, `speakers`, `localstate`, `error`, `kicked`… Os objetos que ele publica (`ParticipantView`, `PubView`) são dados simples; onde a UI precisa da track de verdade (anexar num `<video>`, mudar volume), o `PubView` carrega closures `attach`/`detach`/`setVolume`. É isso que mantém a regra "só este arquivo importa `vendor/livekit-client...`" verificável de relance. `kicked` é emitido quando o LiveKit derruba a conexão com `DisconnectReason.ROOM_DELETED` (sala apagada via CRUD) - distinto do caminho genérico de erro/reconexão, porque oferecer "Reconectar" numa sala que não existe mais seria enganoso.
+- **`core/chat-session.js` é a espinha do chat.** Fala STOMP com o backend (`/ws/chat`), independente do ciclo de vida da voz: assina o tópico de **todas** as salas do catálogo (mais `/topic/room-catalog`, pro CRUD de salas) já ao conectar, não só a sala atualmente aberta - é isso que permite badge de não-lida numa sala onde a pessoa não está com a voz ligada. O painel de chat visível continua 1:1 com a sala ativa (entrar numa sala ainda faz `router.navigate` + `session.join` juntos); só a camada de transporte/assinatura ficou desacoplada. Ver [`docs/conceito/stomp.md`](../conceito/stomp.md).
 - **Identidade**: `<userId>.<tabNonce>`. O `userId` é um uuid persistido em `localStorage` — sem ele, um F5 criaria uma identity nova e a pessoa apareceria duplicada na presença até o servidor notar a conexão morta. O nonce por aba é **obrigatório**: o LiveKit derruba o participante existente quando uma identity duplicada entra na mesma sala, então um id estável puro faria duas abas se expulsarem. O `userId` é também a chave de volume por participante, "silenciar pra mim" e cor de avatar.
 - **Nome do usuário**: sem login — `localStorage` (`npt.username`), acessado só via `lib/prefs.js`. Trocar o nome usa `localParticipant.setName()` (não reconecta), o que exige o grant `canUpdateOwnMetadata` no token.
-- **Canais**: fixos, vêm do `RoomCatalog`, renderizados server-side. O catálogo também vai pro JS num atributo `data-rooms` — **não** em `<script type="application/json">`, porque o conteúdo de `<script>` é parseado em *script data state*, que não decodifica character references, e o `&quot;` escapado pelo Thymeleaf quebraria o `JSON.parse`.
+- **Canais**: hoje dinâmicos (CRUD via `RoomController`), mas o boot ainda lê o catálogo embutido no HTML - `AppShellController` monta `roomsJson` a partir do `RoomRepository` (Postgres) e o `<ul id="channel-list">` nasce **vazio**, populado por `sidebar.addChannel()` a partir desse mesmo atributo. O catálogo vai pro JS num atributo `data-rooms` — **não** em `<script type="application/json">`, porque o conteúdo de `<script>` é parseado em *script data state*, que não decodifica character references, e o `&quot;` escapado pelo Thymeleaf quebraria o `JSON.parse`. Criações/edições/exclusões depois do boot chegam via `/topic/room-catalog` (STOMP) e `sidebar.addChannel/renameChannel/removeChannel` atualizam a lista sem reload - um reload derrubaria a própria voz de quem só estava mexendo numa sala diferente.
 - **Áudio**: um `<audio>` oculto por publicação remota, chaveado por `trackSid` (não por identity: alguém pode ter microfone + áudio de tela + "ouvir junto" ao mesmo tempo). Áudio local nunca é anexado. Desbloqueio de autoplay via `RoomEvent.AudioPlaybackStatusChanged` + `room.startAudio()`.
 - **Tiles**: um por par (participante, fonte), então câmera e tela compartilhada são tiles **independentes** — antes havia um `<video>` por participante e a tela substituía a câmera. O stage só existe quando alguém está transmitindo imagem; numa conversa só de voz o chat ocupa a coluna inteira e a sidebar é quem mostra quem está lá.
 - **Presença**: o canal em que a pessoa está vem dos eventos do LiveKit (instantâneos); os **outros** canais vêm do polling de `GET /api/presence`. Isso tira o poll do caminho crítico de latência. Ver [`docs/projeto/backend.md`](backend.md).
 - **Ícones**: sprite SVG inlinado, com `stroke="currentColor"` — estado (mutado = vermelho, ativo = accent) é só trocar a cor do container, sem um ícone por estado. Inlinado e não em arquivo externo porque `<use>` externo cria uma shadow tree que o CSS do documento não alcança.
 - **Zero `innerHTML` no codebase.** Todo texto passa por `lib/dom.js` (`el({ text })` → `textContent`). É uma invariante muito mais fácil de revisar que "innerHTML só pra string estática".
 
-## Limitação conhecida: o chat não tem histórico
+## Chat persistido e não-lidas entre reloads
 
-`sendChatMessage` do LiveKit é um pacote de dados transmitido a quem está conectado **naquele momento**. Portanto, sem persistência no backend:
+O chat já não depende do canal de dados do LiveKit - é STOMP + MongoDB (ver
+[`docs/conceito/stomp.md`](../conceito/stomp.md) e `docs/projeto/backend.md`). `core/chat-store.js`
+deixou de ser a única fonte de verdade: `ensureHistory(roomId)` busca as últimas 250 mensagens
+persistidas (`GET /api/rooms/{roomId}/messages`) na primeira vez que uma sala é aberta na sessão,
+e mensagens ao vivo continuam chegando via `core/chat-session.js` e sendo acrescentadas por
+`append()` (dedup por id cobre a sobreposição entre as duas fontes).
 
-- não há como mostrar o que foi dito antes de entrar;
-- não há como acumular não-lidas de um canal em que a pessoa não está (os pacotes nem chegam ao navegador dela) — o badge de não-lidas é honesto só pro canal ativo.
-
-O `core/chat-store.js` resolve a parte modesta que dá: pular entre canais na mesma sessão não apaga o que já foi visto. Nada é gravado no `localStorage` de propósito — seria fingir um histórico impossível de manter coerente. A tela avisa isso explicitamente ao usuário. Persistência de verdade é a fase de [`docs/conceito/stomp.md`](../conceito/stomp.md) + MongoDB.
+Não-lidas sobrevivem a um reload porque o critério de "lido até onde" é um **timestamp
+persistido em `localStorage`** (`lib/prefs.js`, `KEYS.chatLastRead`), e não um contador só em
+memória: `markRead(roomId, timestamp)` grava o timestamp da mensagem mais recente conhecida
+(vindo do relógio do servidor, não `Date.now()` - imune a desincronia de relógio entre
+cliente e backend), e no boot cada sala é conferida via
+`GET /api/rooms/{roomId}/messages?after=<último lido>` pra saber quantas mensagens novas
+existem desde então. Como `ChatSession` assina o tópico de todas as salas (não só a ativa), o
+badge de não-lida funciona pra qualquer canal, não só o que está com a voz conectada.
 
 ## Cache dos assets
 

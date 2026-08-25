@@ -89,6 +89,16 @@ public class LiveKitTokenService {
         return buildToken(BACKEND_IDENTITY, BACKEND_IDENTITY, apiTtlSeconds, videoGrant);
     }
 
+    /**
+     * Token pra RoomService.DeleteRoom (e CreateRoom) - roomCreate nao e' escopado por
+     * sala como roomAdmin e', entao um token so serve pra apagar qualquer sala.
+     */
+    public String createRoomCreateToken() {
+        ObjectNode videoGrant = objectMapper.createObjectNode();
+        videoGrant.put("roomCreate", true);
+        return buildToken(BACKEND_IDENTITY, BACKEND_IDENTITY, apiTtlSeconds, videoGrant);
+    }
+
     private String buildToken(String identity, String displayName, long tokenTtlSeconds, ObjectNode videoGrant) {
         long now = Instant.now().getEpochSecond();
 

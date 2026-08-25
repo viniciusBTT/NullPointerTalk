@@ -10,6 +10,7 @@ import { LocalMedia } from './core/local-media.js';
 import { VoiceSession } from './core/voice-session.js';
 import { AudioSink } from './core/audio-sink.js';
 import { ChatStore } from './core/chat-store.js';
+import { ChatSession } from './core/chat-session.js';
 import { Presence } from './core/presence.js';
 import * as router from './core/router.js';
 import { getIdentity, getStableUserId, getDisplayName, setDisplayName } from './core/identity.js';
@@ -21,6 +22,7 @@ import { initChat } from './ui/chat.js';
 import { initSettingsModal } from './ui/settings-modal.js';
 import { initParticipantPopover } from './ui/participant-popover.js';
 import { initNameGate } from './ui/name-gate.js';
+import { initRoomAdmin } from './ui/room-admin.js';
 
 import { showToast, showBanner } from './lib/ui-feedback.js';
 import { setIcon } from './lib/icons.js';
@@ -64,6 +66,8 @@ function boot(displayName) {
     session = new VoiceSession({ localMedia, identity: getIdentity(), displayName });
     const audioSink = new AudioSink({ container: $('audio-sink') });
     const chatStore = new ChatStore();
+    const chatSession = new ChatSession({ roomIds: rooms.map((room) => room.id) });
+    chatSession.connect();
     const presence = new Presence();
 
     const popover = initParticipantPopover({ root: $('participant-popover'), audioSink });
@@ -77,6 +81,26 @@ function boot(displayName) {
         noticeEl: $('presence-notice'),
         onParticipantClick: openParticipant,
     });
+    // O <ul> nasce vazio no HTML (ver shell.html) - popula a partir do mesmo catálogo que
+    // já veio embutido na página, e o listener de 'roomcatalog' mais abaixo mantém isso
+    // sincronizado depois (criação/edição/exclusão, inclusive vindas de outra aba).
+    rooms.forEach((room) => sidebar.addChannel(room));
+
+    initRoomAdmin({
+        listEl: $('channel-list'),
+        addButtonEl: $('btn-add-room'),
+        modalEl: $('room-form-modal'),
+        formEl: $('room-form'),
+        titleEl: $('room-form-title'),
+        idInputEl: $('room-form-id'),
+        nameInputEl: $('room-form-name'),
+        iconInputEl: $('room-form-icon'),
+        errorEl: $('room-form-error'),
+        submitBtnEl: $('room-form-submit'),
+        closeButtons: [...document.querySelectorAll('[data-close="room-form"]')],
+        roomsById,
+        onError: (message) => showToast(message, { type: 'error' }),
+    });
 
     const stage = initStage({ root: $('stage'), onParticipantClick: openParticipant });
 
@@ -86,7 +110,15 @@ function boot(displayName) {
         inputEl: $('chat-input'),
         jumpEl: $('chat-jump'),
         chatStore,
-        onSend: (text) => session.sendChat(text),
+        // getDisplayName() e não a variável displayName capturada no boot(): um rename
+        // (btn-rename) só chama setDisplayName/session.setDisplayName/voicePanel.setName,
+        // nunca reatribui essa variável - lendo direto do pref o nome enviado nunca fica
+        // desatualizado depois de uma troca de nome.
+        onSend: (text) => chatSession.send(session.roomId, {
+            text,
+            name: getDisplayName() ?? displayName,
+            stableId: getStableUserId(),
+        }),
     });
 
     const settings = initSettingsModal({
@@ -173,10 +205,14 @@ function boot(displayName) {
         status.textContent = state === 'reconnecting' ? 'reconectando…' : '';
     });
 
-    session.addEventListener('joined', (event) => {
+    session.addEventListener('joined', async (event) => {
         const { roomId } = event.detail;
         reconnectBanner?.();
         reconnectBanner = null;
+        // Antes de renderizar: o histórico persistido (últimas 250 msgs) só existe no
+        // backend agora - sem isso a pessoa veria só o que chegar dali pra frente, como
+        // no chat efêmero de antes.
+        await chatStore.ensureHistory(roomId);
         chat.renderChannel(roomId);
         chatStore.markRead(roomId);
         sidebar.setUnread(roomId, 0);
@@ -230,14 +266,58 @@ function boot(displayName) {
         popover.closeIf(event.detail.identity);
     });
 
-    session.addEventListener('chat', (event) => {
+    // Chat não depende mais de estar com a voz conectada na sala: ChatSession assina o
+    // tópico de TODAS as salas do catálogo já no connect(), então uma mensagem em canal
+    // onde a pessoa nem está com a voz ligada também chega aqui - é isso que permite
+    // badge de não-lida entre canais.
+    chatSession.addEventListener('message', (event) => {
         const { roomId, message } = event.detail;
-        chatStore.append(roomId, message);
-        if (chat.roomId === roomId) {
-            chat.appendMessage(message);
+        const stored = chatStore.append(roomId, message);
+        if (!stored) {
+            return; // dedup: mensagem que já tínhamos (ex: history fetch e live se cruzando)
         }
-        if (!message.isLocal && document.hidden) {
+        const isActive = chat.roomId === roomId;
+        if (isActive) {
+            chat.appendMessage(stored);
+        }
+        if (stored.isLocal) {
+            return; // a própria mensagem nunca conta como não-lida, nem em outra aba
+        }
+        if (!isActive || document.hidden) {
             chatStore.markUnread(roomId);
+        } else {
+            chatStore.markRead(roomId, stored.timestamp);
+        }
+    });
+
+    // O guard current() em voice-session.js só deixa 'kicked' disparar pra quem ainda
+    // está de fato conectado àquela sala (this.#room === room da geração atual) - então,
+    // ao contrário de 'left'/'error', não precisa reconferir qual sala está ativa aqui.
+    session.addEventListener('kicked', () => {
+        showToast('Esta sala foi removida.');
+        reconnectBanner?.();
+        reconnectBanner = null;
+        router.navigate(null);
+        chat.renderChannel(null);
+        setHeader(null);
+    });
+
+    chatSession.addEventListener('roomcatalog', (event) => {
+        const { type, room } = event.detail;
+        if (type === 'created') {
+            roomsById.set(room.id, room);
+            sidebar.addChannel(room);
+            chatSession.subscribeRoom(room.id);
+        } else if (type === 'updated') {
+            roomsById.set(room.id, room);
+            sidebar.renameChannel(room.id, room);
+            if (session.roomId === room.id) {
+                setHeader(room);
+            }
+        } else if (type === 'deleted') {
+            roomsById.delete(room.id);
+            sidebar.removeChannel(room.id);
+            chatSession.unsubscribeRoom(room.id);
         }
     });
 
@@ -285,6 +365,31 @@ function boot(displayName) {
         sidebar.setSpeaking([...document.querySelectorAll('.member--speaking')].map((n) => n.dataset.identity));
     });
     presence.start();
+
+    // ---------------------------------------------------------------- não-lidas no boot
+
+    // Um fetch pequeno por sala (esperado ser poucas, é um app de laboratório) - reusa o
+    // mesmo endpoint de histórico com "after", em vez de um endpoint só pra contar.
+    (async function loadInitialUnread() {
+        for (const room of rooms) {
+            try {
+                const since = chatStore.lastRead(room.id);
+                const response = await fetch(`/api/rooms/${encodeURIComponent(room.id)}/messages?after=${since}`);
+                if (!response.ok) {
+                    continue;
+                }
+                const unread = await response.json();
+                // Se a sala já virou a ativa enquanto o fetch estava em voo, o handler de
+                // 'joined' já cuidou de marcar como lida - semear aqui por cima seria voltar
+                // atrás numa contagem que já está certa.
+                if (room.id !== chat.roomId) {
+                    chatStore.seedUnread(room.id, unread.length);
+                }
+            } catch {
+                // best-effort: uma sala sem contagem inicial não é motivo pra travar o boot
+            }
+        }
+    })();
 
     // ---------------------------------------------------------------- navegação
 

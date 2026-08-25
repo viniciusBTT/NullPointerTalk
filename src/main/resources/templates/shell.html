@@ -38,19 +38,18 @@
 
         <div class="sidebar__scroll">
             <h2 class="sidebar__label">Canais de voz</h2>
-            <ul class="channel-list" id="channel-list">
-                <li class="channel" th:each="room : ${rooms}"
-                    th:attr="data-room-id=${room.id()}"
-                    th:classappend="${activeRoom != null and activeRoom.id() == room.id()} ? 'channel--active'">
-                    <a class="channel__link" th:href="@{'/room/' + ${room.id()}}">
-                        <span class="channel__icon" th:text="${room.icon()}">💬</span>
-                        <span class="channel__name" th:text="${room.name()}">Geral</span>
-                        <span class="channel__spinner" aria-hidden="true"></span>
-                        <span class="channel__unread hidden">0</span>
-                    </a>
-                    <ul class="channel__members"></ul>
-                </li>
-            </ul>
+            <!--/*
+              Nasce vazio de proposito: com o CRUD de salas a lista deixou de ser fixa,
+              entao app.js/sidebar.js populam via addChannel() no boot (a partir do mesmo
+              data-rooms abaixo) e mantem sincronizado depois via /topic/room-catalog -
+              um reload de pagina a cada sala criada/editada/apagada derrubaria a propria
+              voz de quem so estava mexendo numa sala diferente.
+            */-->
+            <ul class="channel-list" id="channel-list"></ul>
+            <button class="sidebar__add-room" id="btn-add-room" type="button">
+                <svg class="icon" width="16" height="16" aria-hidden="true"><use href="#npt-plus"></use></svg>
+                Nova sala
+            </button>
             <p class="sidebar__notice hidden" id="presence-notice">
                 Presença indisponível — mostrando o último dado conhecido.
             </p>
@@ -188,6 +187,38 @@
 
 <div class="popover hidden" id="participant-popover"></div>
 
+<div class="modal hidden" id="room-form-modal">
+    <form class="modal__card modal__card--narrow" id="room-form">
+        <h2 id="room-form-title">Nova sala</h2>
+        <label class="field">
+            <span class="field__label">Identificador (id)</span>
+            <input id="room-form-id" type="text" maxlength="32" pattern="[a-z0-9\-]{1,32}"
+                   placeholder="ex: matematica" autocomplete="off" required>
+        </label>
+        <label class="field">
+            <span class="field__label">Nome</span>
+            <input id="room-form-name" type="text" maxlength="60" placeholder="Nome da sala"
+                   autocomplete="off" required>
+        </label>
+        <label class="field">
+            <span class="field__label">Ícone (emoji)</span>
+            <input id="room-form-icon" type="text" maxlength="8" placeholder="🗨️" autocomplete="off" required>
+        </label>
+        <p class="field__error hidden" id="room-form-error"></p>
+        <div class="modal__footer">
+            <button class="btn" type="button" data-close="room-form">Cancelar</button>
+            <button class="btn btn--primary" type="submit" id="room-form-submit">Criar</button>
+        </div>
+    </form>
+</div>
+
+<!--/*
+  stomp.umd.min.js e' UMD, nao ESM (o pacote nao publica um bundle single-file de modulo -
+  ver js/vendor/README.md) - por isso um <script> comum, ANTES do modulo abaixo: scripts
+  normais rodam em ordem durante o parse, e type="module" e' sempre adiado pra depois -
+  garante que window.StompJs ja existe quando app.js roda.
+*/-->
+<script th:src="@{/js/vendor/stomp.umd.min.js}"></script>
 <script type="module" th:src="@{/js/app.js}"></script>
 </body>
 </html>

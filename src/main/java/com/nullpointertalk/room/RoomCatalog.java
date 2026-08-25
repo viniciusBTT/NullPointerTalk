@@ -4,25 +4,33 @@ import java.util.List;
 import org.springframework.stereotype.Component;
 
 /**
- * Salas fixas do laboratorio, definidas no codigo (fase 1: sem CRUD, sem persistencia).
+ * Catalogo de salas, agora persistido no Postgres via RoomRepository (fase anterior:
+ * lista fixa no codigo, sem CRUD). RoomInfo continua um tipo imutavel separado da
+ * entidade JPA - Jackson serializa RoomInfo pra roomsJson em AppShellController sem
+ * nunca tocar em proxy/estado de entidade.
  */
 @Component
-public class RoomCatalog {
+public class RoomCatalog implements RoomDirectory {
 
-    private final List<RoomInfo> rooms = List.of(
-            new RoomInfo("geral", "Geral", "💬"),
-            new RoomInfo("jogos", "Jogos", "🎮"),
-            new RoomInfo("estudos", "Estudos", "📚"),
-            new RoomInfo("musica", "Musica", "🎵"));
+    private final RoomRepository repository;
 
-    public List<RoomInfo> all() {
-        return rooms;
+    public RoomCatalog(RoomRepository repository) {
+        this.repository = repository;
     }
 
+    @Override
+    public List<RoomInfo> all() {
+        return repository.findAllByOrderByCreatedAtAsc().stream()
+                .map(RoomCatalog::toInfo)
+                .toList();
+    }
+
+    @Override
     public RoomInfo find(String id) {
-        return rooms.stream()
-                .filter(room -> room.id().equals(id))
-                .findFirst()
-                .orElse(null);
+        return repository.findById(id).map(RoomCatalog::toInfo).orElse(null);
+    }
+
+    static RoomInfo toInfo(Room room) {
+        return new RoomInfo(room.getId(), room.getName(), room.getIcon());
     }
 }

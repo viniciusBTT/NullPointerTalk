@@ -63,13 +63,6 @@ export function initChat({ messagesEl, formEl, inputEl, jumpEl, chatStore, onSen
             return;
         }
 
-        // Aviso honesto: sem persistência no backend, o histórico anterior à entrada
-        // simplesmente não existe - o chat do LiveKit é um pacote pra quem está online.
-        messagesEl.appendChild(el('p', {
-            class: 'chat__notice',
-            text: 'O histórico não é salvo — aparecem apenas as mensagens enviadas enquanto você esteve neste canal.',
-        }));
-
         const history = chatStore.messages(roomId);
         if (history.length === 0) {
             messagesEl.appendChild(emptyState('Nenhuma mensagem por aqui ainda.'));
@@ -89,8 +82,11 @@ export function initChat({ messagesEl, formEl, inputEl, jumpEl, chatStore, onSen
             previous = null;
         }
 
+        // stableId (não identity): a mensagem persistida não carrega mais o nonce de aba
+        // do LiveKit, só o id estável do remetente - é essa a granularidade certa pra
+        // "mesma pessoa" aqui.
         const continues = previous
-            && previous.identity === message.identity
+            && previous.stableId === message.stableId
             && message.timestamp - previous.timestamp < GROUP_WINDOW_MS;
 
         messagesEl.appendChild(continues ? continuationRow(message, date) : blockRow(message, date));

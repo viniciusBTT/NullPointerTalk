@@ -491,15 +491,6 @@ export class VoiceSession extends EventTarget {
         this.#emitLocalState();
     }
 
-    async sendChat(text) {
-        if (!this.#room || this.#state !== 'connected') {
-            throw new Error('Entre num canal para conversar.');
-        }
-        // Não ecoa na UI aqui: sendChatMessage já dispara RoomEvent.ChatMessage pro próprio
-        // remetente, então a mensagem local e a remota passam pelo mesmo caminho.
-        await this.#room.localParticipant.sendChatMessage(text);
-    }
-
     /** Desbloqueio de autoplay. É a API oficial pro que o código antigo fazia com play().catch(). */
     async unlockAudio() {
         try {
@@ -588,13 +579,6 @@ export class VoiceSession extends EventTarget {
             this.#emit('quality', { identity, quality });
         });
 
-        room.on(RoomEvent.ChatMessage, (message, participant) => {
-            if (!current()) {
-                return;
-            }
-            this.#emit('chat', { roomId: this.#roomId, message: this.#chatMessageView(message, participant) });
-        });
-
         room.on(RoomEvent.AudioPlaybackStatusChanged, (canPlayback) => {
             if (current()) {
                 this.#emit('audioplayback', { canPlayback });
@@ -622,6 +606,17 @@ export class VoiceSession extends EventTarget {
             this.#roomId = null;
             this.#setState('idle');
             this.#emit('left', { roomId, reason: 'server' });
+
+            // Sala apagada (CRUD) e nao queda de rede: o LiveKit manda esse motivo
+            // especifico quando a sala e' removida via RoomService.DeleteRoom. Nao emite
+            // 'error' com reconnectRoomId aqui - reconectar so recriaria a sala no LiveKit
+            // sem o registro correspondente no Postgres, e o banner de "Reconectar" seria
+            // enganoso pra uma sala que nao existe mais.
+            if (reason === DisconnectReason.ROOM_DELETED) {
+                this.#emit('kicked', { roomId, reason: 'room-deleted' });
+                return;
+            }
+
             this.#emit('error', {
                 scope: 'connect',
                 message:
@@ -729,21 +724,6 @@ export class VoiceSession extends EventTarget {
             // que um tile criado agora já nasça com o estado certo.
             speaking: this.#speakingIdentities.has(participant.identity),
             quality: this.#qualityByIdentity.get(participant.identity) ?? 'unknown',
-        };
-    }
-
-    #chatMessageView(message, participant) {
-        // participant pode vir undefined (pacote de um remetente que o SDK não rastreia).
-        // O código antigo chamava displayNameFor(participant) direto e o handler morria.
-        const identity = participant?.identity ?? 'sistema';
-        return {
-            id: message.id,
-            text: message.message,
-            timestamp: message.timestamp,
-            identity,
-            stableId: stableIdOf(identity),
-            name: participant ? this.#displayNameFor(participant) : 'Sistema',
-            isLocal: !!participant?.isLocal,
         };
     }
 

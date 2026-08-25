@@ -1,6 +1,8 @@
 package com.nullpointertalk.room;
 
 import com.nullpointertalk.livekit.LiveKitTokenService;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Controller;
@@ -12,6 +14,15 @@ import org.springframework.web.server.ResponseStatusException;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
 
+/**
+ * Sem @Validated na classe de proposito: isso ligaria o MethodValidationInterceptor
+ * baseado em AOP (de spring-context), que intercepta a chamada ANTES do MVC e lanca
+ * jakarta.validation.ConstraintViolationException cru - sem @ExceptionHandler pra esse
+ * tipo, vira 500. Sem @Validated, o proprio Spring MVC (desde o Framework 6.1) ja valida
+ * @RequestParam/@PathVariable com anotacoes de constraint sozinho, e o erro sai como
+ * HandlerMethodValidationException, que o MVC converte pra 400 automaticamente.
+ * Confirmado na pratica: com @Validated a resposta era 500; sem, e' 400.
+ */
 @Controller
 public class RoomTokenController {
 
@@ -35,8 +46,8 @@ public class RoomTokenController {
     @GetMapping(value = "/room/{roomId}/token", produces = "application/json")
     @ResponseBody
     public String token(@PathVariable String roomId,
-            @RequestParam String identity,
-            @RequestParam(defaultValue = "Anonimo") String name) {
+            @RequestParam @NotBlank @Size(max = 128) String identity,
+            @RequestParam(defaultValue = "Anonimo") @Size(max = 60) String name) {
         RoomInfo room = roomCatalog.find(roomId);
         if (room == null) {
             // ResponseStatusException e nao IllegalArgumentException: esta ultima virava
