@@ -7,22 +7,25 @@ NullPointerTalk/
   pom.xml
   src/main/java/com/nullpointertalk/     código Java
   src/main/resources/
-    templates/   Thymeleaf (shell.html + fragments/icons.html)
-    static/      CSS + JS puro, ES modules nativos (sem build, sem npm)
+    static/      build do frontend (frontend/dist), copiado pelo pom.xml — não editado à mão
+  frontend/      projeto Vite (Vue 3 + TypeScript + Pinia + Tailwind CSS)
   docker-compose.yml   LiveKit (SFU de mídia, ver "Como as peças se conectam" abaixo)
   docs/
     conceito/   explicações dos conceitos usados, com referências
     projeto/    este conjunto de docs, sobre o código em si
 ```
 
-Repositório único (sem subpasta `backend/`, sem frontend separado): o Spring Boot roda direto na raiz, renderiza as páginas com Thymeleaf e serve o JS puro que roda no navegador. Ver [`docs/projeto/backend.md`](backend.md) e [`docs/projeto/frontend.md`](frontend.md).
+Mono repo com um módulo Maven na raiz (sem subpasta `backend/`) e um projeto `frontend/` cujo
+build de produção é embutido no jar do Spring Boot — só um processo é servido em produção, a
+partir de uma única origem. Ver [`docs/projeto/backend.md`](backend.md) e
+[`docs/projeto/frontend.md`](frontend.md).
 
 ## Como as peças se conectam
 
 ```
 ┌───────────────────────────┐                                    ┌──────────────────────────┐
 │  Navegador A               │   1. GET /room/{id}/token          │  Backend (Spring Boot)   │
-│  (shell.html + JS puro)    │ ─────────────────────────────────► │                          │
+│  (SPA Vue.js)              │ ─────────────────────────────────► │                          │
 │                             │ ◄───────────────────────────────  │  LiveKitTokenService      │
 │  ┌──────────────────────┐  │   {token, url} (JWT HS256)         │  RoomTokenController      │
 │  │ Room (livekit-client) │  │                                    │  AppShellController       │
@@ -52,9 +55,9 @@ Repositório único (sem subpasta `backend/`, sem frontend separado): o Spring B
 
 - **SFU (LiveKit) em vez de mesh P2P** — o projeto deixou de ser só um laboratório e passou a ser usado de verdade com amigos (VPS própria); mesh não escala além de poucos participantes e tem limitações reais de robustez (reconexão manual, sem controle de banda). LiveKit é open-source (Apache-2.0), self-hosted, maduro e resolve isso sem custo de licença.
 - **Token JWT à mão** (`LiveKitTokenService`) em vez do SDK de servidor do LiveKit — é só um JWS HS256 com 4 claims; monta à mão evita depender de uma lib externa (e uma incerteza de compatibilidade com Jackson 3, usado neste projeto) só pra isso. Mesmo padrão que já era usado em `TurnCredentialsService` pro TURN do coturn.
-- **`livekit-client` vendorizado** (bundle ESM em `static/js/vendor/`, sem npm) — mantém a decisão de não ter build step no frontend mesmo trazendo um SDK externo.
-- **Thymeleaf + JS puro** em vez de um SPA (React/Vite) — sem necessidade de build ou estado global para uma tela de vídeo com salas fixas. Um módulo Maven só, sem CORS a configurar. O roteamento passou a ser no cliente (ver abaixo), mas isso custou ~60 linhas de History API, não um framework.
-- **Shell persistente numa página só** (`GET /` e `GET /room/{id}` renderizam o mesmo template) — trocar de canal com reload custava nova permissão de mídia, chat zerado e uma espera artificial pela liberação da webcam. Sem reload, o `MediaStream` local é capturado uma vez e republicado, e a lista de canais nunca sai da tela. Ver [`docs/projeto/frontend.md`](frontend.md).
+- **`livekit-client` via npm** (`frontend/package.json`) — o Vite cuida de bundling/tree-shaking, sem vendorização manual de arquivo minificado.
+- **Vue.js 3 + TypeScript + Pinia + Vite + Tailwind CSS** em vez de Thymeleaf + JS puro — o frontend cresceu além do que módulos ES coordenados manualmente por um `app.js` conseguiam manter legível, sem lógica de negócio nova o bastante pra justificar essa complexidade adicional por si só. A constituição foi emendada (Princípio II, v2.0.0) pra admitir esse build de frontend integrado ao Maven. Ver [`docs/projeto/frontend.md`](frontend.md) e [`specs/002-vue-frontend-migration/`](../../specs/002-vue-frontend-migration/).
+- **Shell persistente numa página só** (`GET /` e `GET /room/{id}` fazem forward pro mesmo `index.html` da SPA) — trocar de canal com reload custava nova permissão de mídia, chat zerado e uma espera artificial pela liberação da webcam. Sem reload, o `MediaStream` local é capturado uma vez e republicado, e a lista de canais nunca sai da tela. Ver [`docs/projeto/frontend.md`](frontend.md).
 - **Polling de presença em vez de webhook + SSE** — os webhooks do LiveKit não têm garantia de entrega, então um `participant_left` perdido deixaria um fantasma permanente na sidebar e obrigaria a construir reconciliação periódica de qualquer forma. Somado a: uma terceira cópia da API key (no `livekit.yaml`, cujo `keys:` já é sobrescrito pelo `.env`), verificação de assinatura escrita à mão, e um mapa em memória que voltaria vazio a cada deploy. Com o cache single-flight, o polling custa ≤1 requisição em loopback por 1,5s independente de quantos navegadores estejam olhando.
 - **Salas com CRUD, persistidas no Postgres** (`Room`/`RoomRepository`) — aberto a qualquer visitante, sem login (mesma filosofia do resto do app). `RoomSeeder` garante duas salas padrão (`estudos`, `jogos`) na primeira subida. O LiveKit continua criando a sala automaticamente no primeiro join, usando o `id` como nome; apagar uma sala chama `RoomService.DeleteRoom` (Twirp) pra derrubar quem estiver conectado.
 

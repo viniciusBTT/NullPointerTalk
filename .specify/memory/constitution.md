@@ -1,5 +1,27 @@
 <!--
 Sync Impact Report
+- Version change: 1.1.0 → 2.0.0
+- Modified principles:
+  - II. Monólito de Origem Única (Sem Frontend Separado) → II. Mono Repo com Backend como
+    Origem Única em Runtime — redefinição incompatível: revoga a proibição a um processo de
+    build de frontend e a um framework de UI; passa a permitir Vue.js + TypeScript + Pinia +
+    Vite + Tailwind CSS, desde que o build final continue servido pela mesma origem do Spring
+    Boot em runtime (sem deploy/origem separados, sem CORS multi-origem em produção)
+  - I. Minimalismo e Sem Dependência Desnecessária (YAGNI) — removida a menção a "sem SPA, sem
+    build de frontend" como decisão de minimalismo já tomada, por não refletir mais o princípio
+    II
+- Added sections: none
+- Removed sections: none
+- Deferred placeholders: none
+- Templates checked:
+  - .specify/templates/plan-template.md — gate genérico "Constitution Check", sem texto
+    específico de princípio para sincronizar, nenhuma edição necessária.
+- Follow-up TODOs:
+  - docs/projeto/frontend.md DEVE ser atualizado (Princípio IV) quando a migração para
+    Vue.js + TS + Pinia + Vite + Tailwind for implementada, registrando a decisão e a nova
+    estrutura de pastas do frontend dentro do mono repo.
+
+Sync Impact Report (1.0.0 → 1.1.0)
 - Version change: 1.0.0 → 1.1.0
 - Modified principles: n/a
 - Added sections:
@@ -36,25 +58,31 @@ Sync Impact Report (1.0.0, initial ratification)
 Toda dependência, biblioteca ou camada de abstração adicionada DEVE resolver uma necessidade
 real da fase de estudo atual — nunca uma necessidade hipotética futura. Prefira a solução mais
 simples que funcione a um framework ou camada extra "por precaução". Decisões de minimalismo já
-tomadas (sem SPA, sem build de frontend, sem autenticação com senha) só devem ser revertidas
+tomadas (sem autenticação com senha) só devem ser revertidas
 quando a fase de estudo em curso exigir isso de fato, não por antecipação.
 
 Rationale: o objetivo do projeto é aprender comunicação em tempo real na web, não maximizar
 arquitetura; complexidade não essencial desvia foco do aprendizado e aumenta o custo de manter
 o laboratório rodando.
 
-### II. Monólito de Origem Única (Sem Frontend Separado)
+### II. Mono Repo com Backend como Origem Única em Runtime
 
-O projeto É um único módulo Maven na raiz do repositório: o Spring Boot serve páginas
-(Thymeleaf), estáticos (JavaScript puro) e WebSocket a partir da mesma origem. Não introduzir um
-segundo processo de build (SPA/bundler) nem configuração de CORS para contornar múltiplas
-origens. O JavaScript do cliente é puro (sem framework de UI); necessidade de estado mais
-complexo DEVE ser resolvida dentro do shell de página única existente antes de se considerar
-uma reescrita para outro modelo de frontend.
+O projeto É um único repositório Git (mono repo): backend e frontend convivem no mesmo
+repositório, sem divisão em repositórios separados. Em runtime, o Spring Boot continua sendo a
+única origem servida — os artefatos finais do build do frontend (Vue.js + TypeScript + Pinia +
+Vite + Tailwind CSS) são gerados e servidos a partir do próprio backend, nunca implantados como
+aplicação separada com origem/deploy independente. Não introduzir configuração de CORS
+multi-origem em produção para contornar essa fronteira. É permitido um processo de build de
+frontend (Vite) e um framework de UI (Vue) com gerenciamento de estado (Pinia) — a proibição
+anterior a esse tipo de ferramenta fica revogada por esta emenda; o que continua não-negociável
+é a origem única em runtime, não a ausência de um passo de build.
 
-Rationale: elimina uma classe inteira de problemas (build duplo, CORS, dessincronia de versões)
-irrelevantes ao objetivo de estudo, e mantém o app trivial de rodar localmente
-(`./mvnw spring-boot:run`).
+Rationale: um build de frontend moderno (Vue + TS + Pinia + Vite + Tailwind) passou a ser
+necessário para sustentar a complexidade de estado e UI do projeto, mas isso não precisa (nem
+deve) reabrir a classe de problemas que a decisão original evitava — build duplo em produção,
+CORS, dessincronia de versões entre serviços implantados separadamente. Manter tudo em um mono
+repo com origem única preserva o app trivial de rodar localmente e implantar
+(`./mvnw spring-boot:run` continua servindo o frontend buildado).
 
 ### III. Mídia Sempre via SFU Self-Hosted, Nunca no Backend da Aplicação
 
@@ -95,10 +123,10 @@ sendo estudado no momento.
 
 ## Stack Tecnológica & Ambiente
 
-- **Backend**: Java 21, Spring Boot (Maven), módulo único na raiz do repositório — sem
-  subpasta `backend/`.
-- **Frontend**: Thymeleaf + JavaScript puro, servidos pelo próprio Spring Boot (sem build
-  separado, sem framework de UI).
+- **Backend**: Java 21, Spring Boot (Maven), módulo na raiz do repositório (mono repo).
+- **Frontend**: Vue.js 3 + TypeScript + Pinia (estado) + Vite (build) + Tailwind CSS; buildado
+  e servido a partir do mesmo backend Spring Boot (mono repo, origem única em runtime — ver
+  Princípio II).
 - **Mídia**: LiveKit (SFU self-hosted) via `docker-compose.yml`; TURN embutido no LiveKit.
 - **Persistência**: PostgreSQL para dados relacionais (Room, Participant) via Spring Data JPA;
   MongoDB para histórico de chat via Spring Data MongoDB.
@@ -152,4 +180,4 @@ incrementar a versão conforme a política de SemVer abaixo, e atualizar a data 
 implementar persistência poliglota, CRUD de salas), revisitar se os princípios ainda refletem a
 prática do projeto — atualizar este documento em vez de deixá-lo defasado.
 
-**Version**: 1.1.0 | **Ratified**: 2026-08-25 | **Last Amended**: 2026-08-25
+**Version**: 2.0.0 | **Ratified**: 2026-08-25 | **Last Amended**: 2026-08-25

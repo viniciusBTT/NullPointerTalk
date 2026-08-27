@@ -35,3 +35,14 @@ build/
 ### Env ###
 .env
 application-vps.properties
+
+### Frontend (Vite/Node) ###
+frontend/node_modules/
+frontend/dist/
+frontend/dist-ssr/
+frontend/coverage/
+frontend/*.local
+frontend/npm-debug.log*
+frontend/.vite/
+# Node.js baixado pelo frontend-maven-plugin (install-node-and-npm) - binario, nao codigo
+frontend/node/
