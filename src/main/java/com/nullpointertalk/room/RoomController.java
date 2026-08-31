@@ -4,12 +4,10 @@ import com.nullpointertalk.chat.ChatMessageRepository;
 import com.nullpointertalk.livekit.LiveKitRooms;
 import jakarta.validation.Valid;
 import java.time.Instant;
-import java.util.List;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.web.bind.annotation.DeleteMapping;
-import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -19,10 +17,11 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
 /**
- * CRUD de salas, aberto (sem login - igual ao resto do app). O shell agora e' uma SPA
- * estatica (Vue/Vite - ver AppShellController), entao o catalogo deixou de vir embutido
- * no HTML: GET /api/rooms passa a ser a unica fonte do snapshot inicial, complementada
- * por /topic/room-catalog pras atualizacoes ao vivo (research.md #2 da migracao Vue).
+ * CRUD de salas, aberto (sem login - igual ao resto do app). Sem GET de listagem de
+ * proposito: quem abre a pagina do zero ja recebe a lista embutida no HTML por
+ * AppShellController, e quem ja esta com a pagina aberta escuta /topic/room-catalog -
+ * a mesma razao que AppShellController ja da pra nao duplicar essa fonte de verdade
+ * num /api/rooms.
  */
 @RestController
 @RequestMapping("/api/rooms")
@@ -32,20 +31,13 @@ public class RoomController {
     private final ChatMessageRepository chatMessageRepository;
     private final LiveKitRooms liveKit;
     private final SimpMessagingTemplate messagingTemplate;
-    private final RoomCatalog roomCatalog;
 
     public RoomController(RoomRepository repository, ChatMessageRepository chatMessageRepository,
-            LiveKitRooms liveKit, SimpMessagingTemplate messagingTemplate, RoomCatalog roomCatalog) {
+            LiveKitRooms liveKit, SimpMessagingTemplate messagingTemplate) {
         this.repository = repository;
         this.chatMessageRepository = chatMessageRepository;
         this.liveKit = liveKit;
         this.messagingTemplate = messagingTemplate;
-        this.roomCatalog = roomCatalog;
-    }
-
-    @GetMapping
-    public List<RoomInfo> list() {
-        return roomCatalog.all();
     }
 
     @PostMapping

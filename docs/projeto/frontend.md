@@ -1,123 +1,101 @@
-# Frontend: Vue.js 3 + TypeScript + Pinia + Vite + Tailwind CSS
+# Frontend: Thymeleaf + JavaScript puro
 
-Projeto Vite independente em `frontend/`, na raiz do mono repo, ao lado do módulo Maven do
-backend. Em produção o `mvn package` builda o frontend e embute o resultado estático no jar do
-Spring Boot — só um processo é servido, a partir de uma única origem. Em desenvolvimento, o
-Vite roda como um segundo processo com hot-reload, proxiando `/api`, `/ws` e `/room/*/token` pro
-backend. Ver [`../../specs/002-vue-frontend-migration/`](../../specs/002-vue-frontend-migration/)
-para o histórico completo da decisão (spec, plano, pesquisa).
+Sem projeto separado, sem build, sem npm — o próprio Spring Boot serve a página (Thymeleaf), o CSS e o JS (`src/main/resources/`), no mesmo repositório/módulo Maven do backend. WebRTC e as APIs de mídia (`getUserMedia`, `getDisplayMedia`) são nativas do navegador, então não dependem de framework nenhum; a decisão aqui foi só sobre quem renderiza o HTML.
 
-## Por que migrar de Thymeleaf + JS puro
+## Por que Thymeleaf + JS puro (e não React/Vite)
 
-O frontend anterior (documentado no histórico do Git) já tinha crescido pra ~30 módulos ES
-nativos coordenados manualmente por `app.js`, com estado de UI espalhado por closures
-(`chat-store.js`, `presence.js`, `voice-session.js`) e sincronização manual entre eles e o DOM.
-Isso deixou de ser proporcional ao problema: Vue + Pinia dá um modelo declarativo de
-componente/estado sem introduzir complexidade que a fase atual não pede (nenhum framework de UI
-além do Vue, nenhuma suíte E2E automatizada ainda — ver `research.md` da spec da migração).
+Projeto de laboratório para estudar tempo real na web — não precisa da complexidade de um SPA com build próprio e gerenciamento de estado tipo Redux para uma tela de vídeo com salas fixas. Um único módulo Maven simplifica: sem CORS (mesma origem), sem processo `npm run dev` paralelo, sem passo de bundling. Os scripts usam ES modules nativos do navegador (`<script type="module">`), com `import` relativo entre arquivos.
 
-A troca exigiu emendar a constituição do projeto (Princípio II, v2.0.0): "mono repo com backend
-como origem única em runtime" passou a admitir um passo de build de frontend integrado ao Maven,
-em vez de exigir que o próprio Spring Boot renderizasse o HTML.
+O roteamento **é** feito no cliente (History API), mas isso não exige framework: são ~60 linhas em `core/router.js`. Ver "Shell persistente" abaixo.
+
+## Shell persistente: uma página, sem reload
+
+Antes eram duas páginas (`home.html` e `room.html`) com navegação de verdade entre elas. Trocar de sala custava um reload completo: nova permissão de câmera, chat zerado, e um `setTimeout(150ms)` antes de navegar porque o driver da webcam não libera o dispositivo instantaneamente.
+
+Agora **`GET /` e `GET /room/{roomId}` renderizam o mesmo template** (`shell.html`, via `AppShellController`). Entrar e trocar de canal acontece por JS, sem reload:
+
+- a lista de canais fica sempre visível (é a coisa que mais faltava em relação ao Discord);
+- o `MediaStream` local é capturado **uma vez** e republicado na sala nova, o que elimina a corrida de liberação de dispositivo — e com ela a gambiarra do `setTimeout`;
+- tela compartilhada e "ouvir junto" são carregados pro canal novo, sem re-escolher a janela;
+- `history.pushState` mantém `/room/<id>` compartilhável, e um link direto funciona porque o servidor devolve a aplicação inteira com aquele canal já marcado como ativo.
 
 ## Estrutura
 
 ```
-frontend/
-  src/
-    main.ts                  # bootstrap: createApp + Pinia + vue-router
-    App.vue                  # shell inteiro (rail, sidebar, stage, chat, modais) — persistente
-    router/index.ts          # rotas "/" e "/room/:roomId" — SEM <router-view>: o shell não pode
-                              #   ser desmontado ao trocar de sala (a sessão de voz/chat teria
-                              #   que reconectar do zero). O router só sincroniza a URL/roomId
-                              #   ativo; App.vue reage via watch(route.params.roomId).
-    stores/                  # Pinia — fonte única de verdade
-      identity.ts            # displayName, stableUserId, prefs de mic/câmera (localStorage)
-      presence.ts            # catálogo de salas + presença (polling + eventos ao vivo)
-      chat.ts                # histórico, mensagens ao vivo, não-lidas
-      voice.ts               # ÚNICO módulo que importa livekit-client
-    composables/
-      useLocalMedia.ts       # dono do MediaStream local pelo ciclo de vida da página inteira
-      useAudioSink.ts        # <audio> oculto por publicação remota; volume, surdo
-      useScreenShare.ts      # getDisplayMedia (tela e "ouvir junto")
-      useSounds.ts           # beeps de entrada/saída (Web Audio API)
-      useUiFeedback.ts       # toasts/banners (estado reativo compartilhado)
-      useBrowserSupport.ts   # checagem de WebRTC/WebSocket no boot
-    components/
-      sidebar/    Sidebar, ChannelList, VoicePanel, RoomAdminModal
-      stage/      Stage, ParticipantTile, ParticipantPopover
-      chat/       ChatPanel
-      overlays/   NameGate, SettingsModal, IconPicker, ToastHost
-      Icon.vue, IconSprite.vue, Avatar.vue
-    api/                     # clientes REST/STOMP (ver contracts/backend-api.md da spec)
-      http.ts  rooms.ts  chatHistory.ts  presence.ts  roomToken.ts  chatSocket.ts
-    lib/                     # funções puras sem estado de framework
-      avatar.ts  icons.ts  roomIcons.ts  prefs.ts
-  tests/unit/stores/          # Vitest — stores com lógica não trivial
-  vite.config.ts               # plugin Tailwind + proxy de dev pro backend
-
-src/main/java/com/nullpointertalk/room/
-  AppShellController.java     # "/" e "/room/{roomId}" -> forward:/index.html (SPA estática)
-  RoomController.java         # + GET /api/rooms (novo — catálogo inicial da SPA)
+src/main/resources/
+  templates/
+    shell.html            # o shell inteiro: rail, sidebar, stage, chat, modais
+    fragments/icons.html  # sprite SVG, inlinado no <body>
+  static/
+    css/                  # 6 arquivos, 6 <link> (sem @import, que serializa o download)
+      tokens.css          # ÚNICO lugar com cor/forma/medida (paleta dark estilo Discord)
+      base.css            # reset, tipografia, botões, formulários, .hidden global
+      shell.css           # grid do shell, rail, sidebar, painel de voz, controles
+      stage.css           # grade de vídeo, tiles, modo foco, badges
+      chat.css            # mensagens, agrupamento, separador de dia, composer
+      overlays.css        # modais, popover, toasts, banners
+    js/
+      app.js              # entry: constrói os módulos, liga os eventos, boota
+      core/
+        voice-session.js  # ÚNICO módulo que importa o SDK do LiveKit. EventTarget.
+        local-media.js    # dono do MediaStream local pelo ciclo de vida da página
+        audio-sink.js     # <audio> oculto por publicação remota; volume, surdo, desbloqueio
+        chat-store.js     # buffer de mensagens por canal + não-lidas
+        presence.js       # polling de /api/presence
+        router.js         # pathname <-> canal, pushState/popstate
+        identity.js       # nome de exibição + identity estável
+      ui/
+        sidebar.js  voice-panel.js  stage.js  tile.js  chat.js
+        settings-modal.js  participant-popover.js  name-gate.js
+      lib/
+        media.js  screenshare.js  ui-feedback.js
+        prefs.js  dom.js  avatar.js  icons.js  sounds.js
+      vendor/
+        livekit-client.esm.min.js  # SDK vendorizado (sem npm/build) - ver vendor/README.md
 ```
 
 ## Como as peças se conectam
 
-O fluxo de dados é o padrão Pinia: componentes leem stores reativamente e chamam ações; stores
-não conhecem componentes. Os composables (`useLocalMedia`, `useAudioSink`, `useSounds`) são
-estado em nível de módulo (não por instância de componente) porque precisam sobreviver a troca de
-tela/rota — o mesmo motivo que os justificava como classes instanciadas uma vez em `app.js` na
-versão anterior.
+O controle é unidirecional: a UI chama métodos em `session`/`audioSink`/`chatStore`, e eles respondem por **evento**. Nenhum módulo de UI lê o DOM de outro.
 
-- **`stores/voice.ts` é a espinha da voz**, porte de `core/voice-session.js`. Único módulo que
-  importa `livekit-client`. Expõe `state` (`idle|joining|connected|reconnecting`), `participants`,
-  `videoPubs`/`audioPubs` (recomputados em lote por microtask, não a cada evento do SDK — evita
-  redesenhar o grid inteiro numa rajada de eventos ao entrar numa sala cheia) e ações
-  (`join`/`leave`/`setMicEnabled`/…). Eventos pontuais (`joined`, `left`, `kicked`, `error`,
-  `participantjoined/left`) saem por um pequeno barramento (`voice.on(callback)`), consumidos só
-  em `App.vue` pra disparar toasts/sons/navegação — os componentes de tela nunca leem esse
-  barramento diretamente, só o estado reativo.
-- **Geração + fila de join preservadas**: cliques rápidos entre canais não abrem conexões
-  órfãs — cada `join()` incrementa um contador de geração; qualquer passo assíncrono de uma
-  chamada antiga aborta silenciosamente ao notar que uma geração mais nova já começou. Ver o
-  comentário em `stores/voice.ts#join`.
-- **`stores/chat.ts`** assina `/topic/room/{roomId}` de **todas** as salas do catálogo (não só a
-  aberta) — é o que permite badge de não-lida num canal onde a voz não está conectada. Exporta
-  `unread(roomId)`/`unreadCounts` como única fonte, consumida tanto por `ChannelList` (badge)
-  quanto por `ChatPanel`, sem lógica duplicada (US3 da spec da migração).
-- **`stores/presence.ts`** funde duas fontes: o canal onde a própria voz está conectada vem do
-  LiveKit (instantâneo, via `setLive()`, chamado de `App.vue` a partir de `voice.participants`);
-  os demais canais vêm do polling de `GET /api/presence`, com backoff exponencial quando a
-  resposta chega marcada como `stale` (header `X-Presence-Stale`).
-- **Identidade** (`stores/identity.ts`): `<userId>.<tabNonce>`, mesmas chaves de `localStorage`
-  de antes (`npt.username`, `npt.userId`) — preferências de quem já usava o app continuam válidas
-  (FR-007 da spec).
-- **`useAudioSink`**: um `<audio>` oculto por publicação remota, chaveado por `trackSid` — criado
-  fora da árvore de componentes (anexado direto a `document.body`) porque precisa sobreviver a
-  qualquer remontagem de tela.
-- **Tiles do stage**: um por par (participante, fonte) — câmera e tela compartilhada de uma
-  mesma pessoa são tiles independentes. `ParticipantTile.vue` anexa a track só uma vez (`onMounted`)
-  e nunca reanexa em atualizações — importante porque `adaptiveStream` do LiveKit usa
-  `IntersectionObserver` e pausaria a track se o tile fosse escondido em vez de desmontado
-  (por isso o stage usa `v-if`/remoção real de elemento, nunca `v-show`, pra tiles de vídeo).
-- **Zero `v-html`** no codebase — interpolação padrão do Vue já escapa texto (mensagens de chat,
-  nomes de participantes), preservando a invariante "zero innerHTML" da versão anterior sem
-  esforço extra.
+- **`core/voice-session.js` é a espinha da voz.** É o único arquivo que conhece o SDK do LiveKit (áudio/vídeo/tela - o chat não passa mais por aqui, ver abaixo). Expõe `join`/`leave`/`setMicEnabled`/`setCameraEnabled`/… e emite `statechange`, `joined`, `left`, `participants`, `tracks`, `speakers`, `localstate`, `error`, `kicked`… Os objetos que ele publica (`ParticipantView`, `PubView`) são dados simples; onde a UI precisa da track de verdade (anexar num `<video>`, mudar volume), o `PubView` carrega closures `attach`/`detach`/`setVolume`. É isso que mantém a regra "só este arquivo importa `vendor/livekit-client...`" verificável de relance. `kicked` é emitido quando o LiveKit derruba a conexão com `DisconnectReason.ROOM_DELETED` (sala apagada via CRUD) - distinto do caminho genérico de erro/reconexão, porque oferecer "Reconectar" numa sala que não existe mais seria enganoso.
+- **`core/chat-session.js` é a espinha do chat.** Fala STOMP com o backend (`/ws/chat`), independente do ciclo de vida da voz: assina o tópico de **todas** as salas do catálogo (mais `/topic/room-catalog`, pro CRUD de salas) já ao conectar, não só a sala atualmente aberta - é isso que permite badge de não-lida numa sala onde a pessoa não está com a voz ligada. O painel de chat visível continua 1:1 com a sala ativa (entrar numa sala ainda faz `router.navigate` + `session.join` juntos); só a camada de transporte/assinatura ficou desacoplada. Ver [`docs/conceito/stomp.md`](../conceito/stomp.md).
+- **Identidade**: `<userId>.<tabNonce>`. O `userId` é um uuid persistido em `localStorage` — sem ele, um F5 criaria uma identity nova e a pessoa apareceria duplicada na presença até o servidor notar a conexão morta. O nonce por aba é **obrigatório**: o LiveKit derruba o participante existente quando uma identity duplicada entra na mesma sala, então um id estável puro faria duas abas se expulsarem. O `userId` é também a chave de volume por participante, "silenciar pra mim" e cor de avatar.
+- **Nome do usuário**: sem login — `localStorage` (`npt.username`), acessado só via `lib/prefs.js`. Trocar o nome usa `localParticipant.setName()` (não reconecta), o que exige o grant `canUpdateOwnMetadata` no token.
+- **Canais**: hoje dinâmicos (CRUD via `RoomController`), mas o boot ainda lê o catálogo embutido no HTML - `AppShellController` monta `roomsJson` a partir do `RoomRepository` (Postgres) e o `<ul id="channel-list">` nasce **vazio**, populado por `sidebar.addChannel()` a partir desse mesmo atributo. O catálogo vai pro JS num atributo `data-rooms` — **não** em `<script type="application/json">`, porque o conteúdo de `<script>` é parseado em *script data state*, que não decodifica character references, e o `&quot;` escapado pelo Thymeleaf quebraria o `JSON.parse`. Criações/edições/exclusões depois do boot chegam via `/topic/room-catalog` (STOMP) e `sidebar.addChannel/renameChannel/removeChannel` atualizam a lista sem reload - um reload derrubaria a própria voz de quem só estava mexendo numa sala diferente.
+- **Áudio**: um `<audio>` oculto por publicação remota, chaveado por `trackSid` (não por identity: alguém pode ter microfone + áudio de tela + "ouvir junto" ao mesmo tempo). Áudio local nunca é anexado. Desbloqueio de autoplay via `RoomEvent.AudioPlaybackStatusChanged` + `room.startAudio()`.
+- **Tiles**: um por par (participante, fonte), então câmera e tela compartilhada são tiles **independentes** — antes havia um `<video>` por participante e a tela substituía a câmera. O stage só existe quando alguém está transmitindo imagem; numa conversa só de voz o chat ocupa a coluna inteira e a sidebar é quem mostra quem está lá.
+- **Presença**: o canal em que a pessoa está vem dos eventos do LiveKit (instantâneos); os **outros** canais vêm do polling de `GET /api/presence`. Isso tira o poll do caminho crítico de latência. Ver [`docs/projeto/backend.md`](backend.md).
+- **Ícones**: sprite SVG inlinado, com `stroke="currentColor"` — estado (mutado = vermelho, ativo = accent) é só trocar a cor do container, sem um ícone por estado. Inlinado e não em arquivo externo porque `<use>` externo cria uma shadow tree que o CSS do documento não alcança.
+- **Zero `innerHTML` no codebase.** Todo texto passa por `lib/dom.js` (`el({ text })` → `textContent`). É uma invariante muito mais fácil de revisar que "innerHTML só pra string estática".
+- **Ícone de sala**: escolhido por uma modal (`ui/icon-picker.js`) sobre uma grade estática de emojis curados (`ROOM_ICON_CATALOG`, uma constante JS, sem endpoint nem tabela no Postgres). O `<input id="room-form-icon">` continua sendo a única fonte de verdade do valor — a modal só lê esse valor para destacar a opção correspondente ao abrir, e escreve nele ao escolher uma opção — o que preserva de graça ícones legados fora do catálogo (o input mantém qualquer texto livre já salvo) e o cancelamento sem efeito (fechar sem escolher nada nunca escreve no input).
 
-## Dev vs. produção
+## Chat persistido e não-lidas entre reloads
 
-| | Dev | Produção |
-|---|---|---|
-| Processos | 2 (`./mvnw spring-boot:run` + `npm run dev`) | 1 (jar do Spring Boot) |
-| Frontend servido por | Vite (`:5173`, hot-reload) | Spring Boot (`:8080`, estático) |
-| API/WebSocket | proxiados pelo Vite pro backend | mesma origem |
+O chat já não depende do canal de dados do LiveKit - é STOMP + MongoDB (ver
+[`docs/conceito/stomp.md`](../conceito/stomp.md) e `docs/projeto/backend.md`). `core/chat-store.js`
+deixou de ser a única fonte de verdade: `ensureHistory(roomId)` busca as últimas 250 mensagens
+persistidas (`GET /api/rooms/{roomId}/messages`) na primeira vez que uma sala é aberta na sessão,
+e mensagens ao vivo continuam chegando via `core/chat-session.js` e sendo acrescentadas por
+`append()` (dedup por id cobre a sobreposição entre as duas fontes).
 
-Ver [`../../specs/002-vue-frontend-migration/quickstart.md`](../../specs/002-vue-frontend-migration/quickstart.md)
-para o roteiro completo de validação (paridade funcional, hot-reload, build de produção).
+Não-lidas sobrevivem a um reload porque o critério de "lido até onde" é um **timestamp
+persistido em `localStorage`** (`lib/prefs.js`, `KEYS.chatLastRead`), e não um contador só em
+memória: `markRead(roomId, timestamp)` grava o timestamp da mensagem mais recente conhecida
+(vindo do relógio do servidor, não `Date.now()` - imune a desincronia de relógio entre
+cliente e backend), e no boot cada sala é conferida via
+`GET /api/rooms/{roomId}/messages?after=<último lido>` pra saber quantas mensagens novas
+existem desde então. Como `ChatSession` assina o tópico de todas as salas (não só a ativa), o
+badge de não-lida funciona pra qualquer canal, não só o que está com a voz conectada.
 
-## Testes
+## Cache dos assets
 
-Vitest + `@vue/test-utils` para stores com lógica não trivial (`frontend/tests/unit/stores/`) —
-mesma exigência já existente na constituição pro backend, aplicada ao equivalente de frontend.
-Fluxos de tela completos continuam validados manualmente (roteiro do quickstart), sem suíte E2E
-automatizada por ora.
+`spring.web.resources.cache.cachecontrol.no-cache=true` força revalidação. Fingerprint por hash de conteúdo (`spring.web.resources.chain.strategy.content`) **não funciona aqui**: ele só reescreve URLs que passam pelo `@{...}` do Thymeleaf, e o `import './media.js'` de um ES module nativo é resolvido pelo próprio navegador contra o caminho sem fingerprint — reescrever isso exigiria um build step, que é justamente o que este projeto não tem. Cada módulo custa um GET condicional que responde 304 sem corpo, e nunca há risco de servir JS velho depois de um deploy.
+
+## Rodar localmente
+
+Não há passo separado — sobe junto com o backend:
+
+```bash
+./mvnw spring-boot:run   # http://localhost:8080
+```

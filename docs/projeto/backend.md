@@ -2,7 +2,7 @@
 
 Spring Boot 4.1.0, Java 21, Maven. Ver dependências completas em [`pom.xml`](../../pom.xml).
 
-Repositório único, sem subpasta `backend/`: o Maven roda direto na raiz. Em produção, o mesmo jar serve o build estático do frontend (Vue.js, buildado em `frontend/` e embutido via `pom.xml`) e o WebSocket de sinalização — só um processo é servido. Ver [`docs/projeto/frontend.md`](frontend.md) para a parte de frontend.
+Repositório único, sem subpasta `backend/`: o Maven roda direto na raiz, e esse mesmo projeto serve as páginas (Thymeleaf), os estáticos (CSS/JS puro) e o WebSocket de sinalização — não há um processo de frontend separado. Ver [`docs/projeto/frontend.md`](frontend.md) para a parte de templates/JS.
 
 ## Estado atual (WebRTC áudio/vídeo/tela via LiveKit + chat persistido via STOMP/MongoDB + CRUD de salas)
 
@@ -22,7 +22,7 @@ src/main/java/com/nullpointertalk/
     RoomSeeder.java                # CommandLineRunner: garante "estudos"/"jogos" no boot
     RoomController.java           # POST/PUT/DELETE /api/rooms - CRUD aberto, sem login
     RoomCreateRequest.java / RoomUpdateRequest.java / RoomCatalogEvent.java
-    AppShellController.java       # GET /  e  GET /room/{roomId} -> forward:/index.html (SPA)
+    AppShellController.java       # GET /  e  GET /room/{roomId} -> shell.html (o MESMO template)
     RoomTokenController.java      # GET /room/{roomId}/token -> {token, url}
     PresenceController.java       # GET /api/presence -> {roomId: [{identity, name}]}
     PresenceService.java          # agrega a presenca e faz cache (single-flight)
@@ -119,7 +119,8 @@ Ver [`docs/projeto/arquitetura.md`](arquitetura.md) e [`docs/conceito/webrtc.md`
 
 | Dependência | Propósito |
 |---|---|
-| `spring-boot-starter-webmvc` | Controllers que servem o shell estático e o JSON (`AppShellController`, `RoomTokenController`, `PresenceController`, `RoomController`, `ChatHistoryController`) |
+| `spring-boot-starter-webmvc` | Controllers que renderizam o shell e servem o JSON (`AppShellController`, `RoomTokenController`, `PresenceController`, `RoomController`, `ChatHistoryController`) |
+| `spring-boot-starter-thymeleaf` | Motor de template server-side (`shell.html`) |
 | `spring-boot-starter-websocket` | Chat via STOMP (`StompConfig`/`ChatController`) - a sinalização WebRTC continua toda no LiveKit, isso aqui é só o chat |
 | `spring-boot-starter-data-jpa` + `postgresql` | ORM/driver para Postgres (`Room`) |
 | `spring-boot-starter-data-mongodb` | Persistência de `ChatMessage` |

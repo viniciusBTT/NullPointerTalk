@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="pt-br" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="color-scheme" content="dark">
+    <title th:text="${activeRoom != null} ? ${activeRoom.name()} + ' · NullPointerTalk' : 'NullPointerTalk'">NullPointerTalk</title>
+    <!--/* Sem @import: ele serializa os downloads e bloqueia o render. */-->
+    <link rel="stylesheet" th:href="@{/css/tokens.css}">
+    <link rel="stylesheet" th:href="@{/css/base.css}">
+    <link rel="stylesheet" th:href="@{/css/shell.css}">
+    <link rel="stylesheet" th:href="@{/css/stage.css}">
+    <link rel="stylesheet" th:href="@{/css/chat.css}">
+    <link rel="stylesheet" th:href="@{/css/overlays.css}">
+</head>
+<body>
+<th:block th:replace="~{fragments/icons :: sprite}"></th:block>
+
+<!--/*
+  O catálogo vai num atributo data- e não em <script type="application/json">: o conteúdo
+  de <script> é parseado em "script data state", que NÃO decodifica character references,
+  então o &quot; escapado pelo Thymeleaf chegaria literal e o JSON.parse quebraria. Valor
+  de atributo o parser HTML decodifica normalmente.
+*/-->
+<div class="app" id="app-shell"
+     th:attr="data-rooms=${roomsJson},data-active-room=${activeRoom != null ? activeRoom.id() : ''}">
+
+    <aside class="rail">
+        <div class="rail__logo" title="NullPointerTalk">NPT</div>
+    </aside>
+
+    <div class="sidebar-backdrop" id="sidebar-backdrop"></div>
+
+    <nav class="sidebar" id="sidebar">
+        <div class="sidebar__header">
+            <span class="sidebar__title">NullPointerTalk</span>
+        </div>
+
+        <div class="sidebar__scroll">
+            <h2 class="sidebar__label">Canais de voz</h2>
+            <!--/*
+              Nasce vazio de proposito: com o CRUD de salas a lista deixou de ser fixa,
+              entao app.js/sidebar.js populam via addChannel() no boot (a partir do mesmo
+              data-rooms abaixo) e mantem sincronizado depois via /topic/room-catalog -
+              um reload de pagina a cada sala criada/editada/apagada derrubaria a propria
+              voz de quem so estava mexendo numa sala diferente.
+            */-->
+            <ul class="channel-list" id="channel-list"></ul>
+            <button class="sidebar__add-room" id="btn-add-room" type="button">
+                <svg class="icon" width="16" height="16" aria-hidden="true"><use href="#npt-plus"></use></svg>
+                Nova sala
+            </button>
+            <p class="sidebar__notice hidden" id="presence-notice">
+                Presença indisponível — mostrando o último dado conhecido.
+            </p>
+        </div>
+
+        <div class="voice-panel">
+            <div class="voice-panel__status">
+                <span class="voice-panel__state" id="voice-status">Fora de um canal</span>
+                <span class="voice-panel__channel hidden" id="voice-channel"></span>
+            </div>
+            <div class="voice-panel__me">
+                <span class="voice-panel__avatar" id="voice-identity"></span>
+                <span class="voice-panel__name" id="voice-name">visitante</span>
+                <button class="icon-btn icon-btn--sm" id="btn-rename" type="button" title="Trocar nome">
+                    <svg class="icon" width="16" height="16" aria-hidden="true"><use href="#npt-edit"></use></svg>
+                </button>
+            </div>
+            <div class="voice-panel__actions">
+                <button class="icon-btn" id="btn-mic" type="button" title="Desligar microfone">
+                    <svg class="icon" width="20" height="20" aria-hidden="true"><use href="#npt-mic"></use></svg>
+                </button>
+                <button class="icon-btn" id="btn-deafen" type="button" title="Ficar surdo">
+                    <svg class="icon" width="20" height="20" aria-hidden="true"><use href="#npt-headphones"></use></svg>
+                </button>
+                <button class="icon-btn" id="btn-settings" type="button" title="Configurações">
+                    <svg class="icon" width="20" height="20" aria-hidden="true"><use href="#npt-gear"></use></svg>
+                </button>
+                <button class="icon-btn icon-btn--danger hidden" id="btn-leave" type="button" title="Sair do canal">
+                    <svg class="icon" width="20" height="20" aria-hidden="true"><use href="#npt-phone-off"></use></svg>
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <main class="main">
+        <header class="main__header">
+            <button class="icon-btn main__menu" id="btn-menu" type="button" title="Canais">
+                <svg class="icon" width="20" height="20" aria-hidden="true"><use href="#npt-menu"></use></svg>
+            </button>
+            <span class="main__icon" id="header-icon" th:text="${activeRoom != null ? activeRoom.icon() : ''}"></span>
+            <h1 class="main__title" id="header-title"
+                th:text="${activeRoom != null ? activeRoom.name() : 'NullPointerTalk'}">NullPointerTalk</h1>
+            <span class="conn" id="conn-status"></span>
+        </header>
+
+        <div class="content">
+            <!--/* O stage nasce escondido: só existe quando alguém transmite imagem. */-->
+            <section class="stage hidden" id="stage"></section>
+
+            <section class="chat">
+                <div class="chat__messages" id="chat-messages"></div>
+                <button class="chat__jump hidden" id="chat-jump" type="button">
+                    <svg class="icon" width="14" height="14" aria-hidden="true"><use href="#npt-arrow-down"></use></svg>
+                    Novas mensagens
+                </button>
+                <form class="composer" id="chat-form">
+                    <input id="chat-input" type="text" maxlength="500" autocomplete="off"
+                           placeholder="Entre num canal para conversar" disabled>
+                    <button class="composer__send" type="submit" title="Enviar" disabled>
+                        <svg class="icon" width="18" height="18" aria-hidden="true"><use href="#npt-send"></use></svg>
+                    </button>
+                </form>
+            </section>
+        </div>
+
+        <footer class="call-controls hidden" id="call-controls">
+            <button class="control-btn" id="btn-camera" type="button" title="Ligar câmera" disabled>
+                <svg class="icon" width="22" height="22" aria-hidden="true"><use href="#npt-camera-off"></use></svg>
+            </button>
+            <button class="control-btn" id="btn-screen" type="button" title="Compartilhar tela" disabled>
+                <svg class="icon" width="22" height="22" aria-hidden="true"><use href="#npt-screen-share-off"></use></svg>
+            </button>
+            <button class="control-btn" id="btn-listen" type="button" title="Ouvir junto (áudio de uma aba)" disabled>
+                <svg class="icon" width="22" height="22" aria-hidden="true"><use href="#npt-music"></use></svg>
+            </button>
+            <button class="control-btn control-btn--danger" id="btn-hangup" type="button" title="Sair do canal">
+                <svg class="icon" width="22" height="22" aria-hidden="true"><use href="#npt-phone-off"></use></svg>
+            </button>
+        </footer>
+    </main>
+</div>
+
+<!--/*
+  Elementos <audio> do áudio remoto. display:none é seguro pra <audio>; NÃO seria pra
+  <video>, porque com adaptiveStream o LiveKit pausa a subscrição de um vídeo invisível.
+*/-->
+<div id="audio-sink" hidden></div>
+
+<button class="unlock-pill hidden" id="unlock-audio" type="button">
+    <svg class="icon" width="16" height="16" aria-hidden="true"><use href="#npt-volume"></use></svg>
+    Toque para ativar o áudio
+</button>
+
+<div class="modal hidden" id="name-gate">
+    <form class="modal__card modal__card--narrow" id="name-form">
+        <h2>Como podemos te chamar?</h2>
+        <p>Sem login, sem senha — só um nome pra identificar você nos canais.</p>
+        <input id="name-input" type="text" maxlength="30" placeholder="Seu nome" autocomplete="off" required>
+        <button class="btn btn--primary" type="submit">Entrar</button>
+    </form>
+</div>
+
+<div class="modal hidden" id="settings-modal">
+    <div class="modal__card">
+        <div class="modal__header">
+            <h2>Configurações</h2>
+            <button class="icon-btn icon-btn--sm" type="button" data-close="settings" title="Fechar">
+                <svg class="icon" width="18" height="18" aria-hidden="true"><use href="#npt-close"></use></svg>
+            </button>
+        </div>
+
+        <label class="field">
+            <span class="field__label">Microfone</span>
+            <select id="mic-select"></select>
+        </label>
+        <label class="field">
+            <span class="field__label">Câmera</span>
+            <select id="camera-select"></select>
+        </label>
+        <label class="field" id="speaker-row">
+            <span class="field__label">Saída de áudio</span>
+            <select id="speaker-select"></select>
+        </label>
+
+        <label class="field field--inline">
+            <input id="sounds-toggle" type="checkbox">
+            <span class="field__label">Sons de entrada e saída</span>
+        </label>
+
+        <div class="modal__footer">
+            <button class="btn btn--primary" type="button" data-close="settings">Fechar</button>
+        </div>
+    </div>
+</div>
+
+<div class="popover hidden" id="participant-popover"></div>
+
+<div class="modal hidden" id="room-form-modal">
+    <form class="modal__card modal__card--narrow" id="room-form">
+        <h2 id="room-form-title">Nova sala</h2>
+        <label class="field">
+            <span class="field__label">Identificador (id)</span>
+            <input id="room-form-id" type="text" maxlength="32" pattern="[a-z0-9\-]{1,32}"
+                   placeholder="ex: matematica" autocomplete="off" required>
+        </label>
+        <label class="field">
+            <span class="field__label">Nome</span>
+            <input id="room-form-name" type="text" maxlength="60" placeholder="Nome da sala"
+                   autocomplete="off" required>
+        </label>
+        <label class="field">
+            <span class="field__label">Ícone (emoji)</span>
+            <div class="field__row">
+                <input id="room-form-icon" class="field__icon-preview" type="text" maxlength="8"
+                       placeholder="🗨️" autocomplete="off" required readonly>
+                <button class="btn" type="button" id="room-form-icon-trigger">Escolher ícone</button>
+            </div>
+        </label>
+        <p class="field__error hidden" id="room-form-error"></p>
+        <div class="modal__footer">
+            <button class="btn" type="button" data-close="room-form">Cancelar</button>
+            <button class="btn btn--primary" type="submit" id="room-form-submit">Criar</button>
+        </div>
+    </form>
+</div>
+
+<div class="modal hidden" id="icon-picker-modal">
+    <div class="modal__card">
+        <div class="modal__header">
+            <h2>Escolher ícone</h2>
+            <button class="icon-btn icon-btn--sm" type="button" data-close="icon-picker" title="Fechar">
+                <svg class="icon" width="18" height="18" aria-hidden="true"><use href="#npt-close"></use></svg>
+            </button>
+        </div>
+        <div class="icon-picker__grid" id="icon-picker-grid"></div>
+    </div>
+</div>
+
+<!--/*
+  stomp.umd.min.js e' UMD, nao ESM (o pacote nao publica um bundle single-file de modulo -
+  ver js/vendor/README.md) - por isso um <script> comum, ANTES do modulo abaixo: scripts
+  normais rodam em ordem durante o parse, e type="module" e' sempre adiado pra depois -
+  garante que window.StompJs ja existe quando app.js roda.
+*/-->
+<script th:src="@{/js/vendor/stomp.umd.min.js}"></script>
+<script type="module" th:src="@{/js/app.js}"></script>
+</body>
+</html>
