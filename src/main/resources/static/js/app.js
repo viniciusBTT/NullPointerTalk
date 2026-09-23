@@ -19,6 +19,7 @@ import { initSidebar } from './ui/sidebar.js';
 import { initVoicePanel } from './ui/voice-panel.js';
 import { initStage } from './ui/stage.js';
 import { initChat } from './ui/chat.js';
+import { initContentLayout } from './ui/content-layout.js';
 import { initSettingsModal } from './ui/settings-modal.js';
 import { initParticipantPopover } from './ui/participant-popover.js';
 import { initNameGate } from './ui/name-gate.js';
@@ -121,16 +122,31 @@ function boot(displayName) {
         formEl: $('chat-form'),
         inputEl: $('chat-input'),
         jumpEl: $('chat-jump'),
+        attachBtn: $('btn-chat-attach'),
+        imageInputEl: $('chat-image-input'),
+        attachmentEl: $('composer-attachment'),
+        attachmentPreviewEl: $('composer-attachment-preview'),
+        attachmentNameEl: $('composer-attachment-name'),
+        attachmentRemoveBtn: $('btn-attachment-remove'),
         chatStore,
         // getDisplayName() e não a variável displayName capturada no boot(): um rename
         // (btn-rename) só chama setDisplayName/session.setDisplayName/voicePanel.setName,
         // nunca reatribui essa variável - lendo direto do pref o nome enviado nunca fica
         // desatualizado depois de uma troca de nome.
-        onSend: (text) => chatSession.send(session.roomId, {
+        onSend: ({ text, imageUrl }) => chatSession.send(session.roomId, {
             text,
+            imageUrl,
             name: getDisplayName() ?? displayName,
             stableId: getStableUserId(),
         }),
+    });
+
+    const contentLayout = initContentLayout({
+        contentEl: $('content'),
+        chatEl: $('chat-panel'),
+        resizerEl: $('content-resizer'),
+        collapseBtn: $('btn-chat-collapse'),
+        stage,
     });
 
     const settings = initSettingsModal({
@@ -226,6 +242,7 @@ function boot(displayName) {
         // no chat efêmero de antes.
         await chatStore.ensureHistory(roomId);
         chat.renderChannel(roomId);
+        syncUnreadBadge(roomId);
         chatStore.markRead(roomId);
         sidebar.setUnread(roomId, 0);
         presence.refresh();
@@ -245,6 +262,7 @@ function boot(displayName) {
         if (event.detail.reason === 'user') {
             router.navigate(null);
             chat.renderChannel(null);
+            syncUnreadBadge(null);
             setHeader(null);
         }
     });
@@ -253,12 +271,14 @@ function boot(displayName) {
         const { roomId, list } = event.detail;
         lastParticipants = list;
         stage.render({ participants: list, videoPubs: session.videoPubs });
+        contentLayout.refresh();
         presence.setLive(roomId, list);
     });
 
     session.addEventListener('tracks', (event) => {
         const { video, audio } = event.detail;
         stage.render({ participants: lastParticipants, videoPubs: video });
+        contentLayout.refresh();
         audioSink.sync(audio);
     });
 
@@ -311,6 +331,7 @@ function boot(displayName) {
         reconnectBanner = null;
         router.navigate(null);
         chat.renderChannel(null);
+        syncUnreadBadge(null);
         setHeader(null);
     });
 
@@ -335,6 +356,9 @@ function boot(displayName) {
 
     chatStore.addEventListener('unread', (event) => {
         sidebar.setUnread(event.detail.roomId, event.detail.count);
+        if (event.detail.roomId === chat.roomId) {
+            syncUnreadBadge(chat.roomId);
+        }
     });
 
     // Volta a marcar como lido quando a aba reaparece com o canal aberto.
@@ -424,6 +448,7 @@ function boot(displayName) {
             session.leave();
         } else {
             chat.renderChannel(null);
+            syncUnreadBadge(null);
             setHeader(null);
         }
     });
@@ -443,5 +468,16 @@ function boot(displayName) {
         $('header-icon').textContent = room?.icon ?? '';
         $('header-title').textContent = room?.name ?? 'NullPointerTalk';
         document.title = room ? `${room.name} · NullPointerTalk` : 'NullPointerTalk';
+    }
+
+    /** Sincroniza o badge de não-lidas do cabeçalho do chat com a sala ativa - chamado
+     * toda vez que ela muda, e não só quando um evento 'unread' dispara (a sala nova
+     * pode já nascer com 0 não-lidas, e o badge não pode ficar preso no valor da sala
+     * anterior). */
+    function syncUnreadBadge(roomId) {
+        const badge = $('chat-header-unread');
+        const count = roomId ? chatStore.unread(roomId) : 0;
+        badge.textContent = count > 0 ? String(count) : '';
+        badge.classList.toggle('hidden', count === 0);
     }
 }

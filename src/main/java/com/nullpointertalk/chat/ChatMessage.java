@@ -27,5 +27,6 @@ public class ChatMessage {
     private String stableId;
     private String name;
     private String text;
+    private String imageUrl;
     private Instant timestamp;
 }

@@ -13,6 +13,10 @@ export function initStage({ root, onParticipantClick }) {
     /** key -> { element, view } */
     const tiles = new Map();
     let focusedKey = null;
+    /** Último snapshot recebido em render(), pra setForceAvatars() poder re-renderizar
+     * sem que quem chama precise guardar/repassar participants/videoPubs de novo. */
+    let lastArgs = { participants: [], videoPubs: [] };
+    let forceAvatars = false;
 
     root.addEventListener('click', (event) => {
         const tile = event.target.closest('.tile');
@@ -65,7 +69,9 @@ export function initStage({ root, onParticipantClick }) {
         // Tiles de avatar só entram quando o stage já está visível. Numa chamada com
         // vídeo, mostrar quem está sem câmera completa a cena; numa chamada só de voz,
         // não faz sentido abrir um stage cheio de círculos - a sidebar já lista todos.
-        if (views.size > 0) {
+        // forceAvatars é a exceção deliberada: o chat minimizado sem vídeo ativo quer
+        // ver os participantes mesmo assim (ver content-layout.js).
+        if (views.size > 0 || forceAvatars) {
             const withVideo = new Set(videoPubs.map((pub) => pub.identity));
             for (const participant of participants) {
                 if (withVideo.has(participant.identity)) {
@@ -92,6 +98,7 @@ export function initStage({ root, onParticipantClick }) {
     }
 
     function render({ participants, videoPubs }) {
+        lastArgs = { participants, videoPubs };
         const views = buildViews({ participants, videoPubs });
 
         for (const [key, entry] of [...tiles]) {
@@ -127,8 +134,22 @@ export function initStage({ root, onParticipantClick }) {
         }
 
         const hasVideo = videoPubs.length > 0;
-        root.classList.toggle('hidden', !hasVideo);
+        root.classList.toggle('hidden', !hasVideo && !(forceAvatars && participants.length > 0));
         return hasVideo;
+    }
+
+    /** Força tiles de avatar (e o stage visível) mesmo sem vídeo ativo - ver comentário
+     * em buildViews(). Re-renderiza com o último snapshot recebido. */
+    function setForceAvatars(flag) {
+        if (forceAvatars === flag) {
+            return;
+        }
+        forceAvatars = flag;
+        render(lastArgs);
+    }
+
+    function hasVideo() {
+        return lastArgs.videoPubs.length > 0;
     }
 
     function setSpeaking(identities) {
@@ -146,8 +167,9 @@ export function initStage({ root, onParticipantClick }) {
             tiles.delete(key);
         }
         setFocused(null);
+        lastArgs = { participants: [], videoPubs: [] };
         root.classList.add('hidden');
     }
 
-    return { render, setSpeaking, clear };
+    return { render, setSpeaking, clear, setForceAvatars, hasVideo };
 }

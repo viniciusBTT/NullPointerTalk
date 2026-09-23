@@ -1,13 +1,60 @@
 /** Lista de mensagens (com agrupamento por autor) e o composer. */
 
 .chat {
-    display: grid;
-    grid-template-rows: minmax(0, 1fr) auto;
+    display: flex;
+    flex-direction: column;
     position: relative;
     min-height: 0;
 }
 
+/* ---------------------------------------------------------------- cabeçalho / minimizar */
+
+.chat__header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: 40px;
+    padding: 0 8px 0 16px;
+    flex-shrink: 0;
+    box-shadow: 0 1px 0 rgba(0, 0, 0, 0.2);
+}
+
+.chat__header-title {
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+}
+
+.chat__header-unread {
+    min-width: 18px;
+    padding: 0 5px;
+    border-radius: var(--r-pill);
+    background: var(--danger);
+    color: #fff;
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-align: center;
+    line-height: 18px;
+}
+
+#btn-chat-collapse {
+    margin-left: auto;
+}
+
+/* Faixa fina (minimizado COM vídeo ativo): só o cabeçalho sobra - é isso que faz a linha
+   "auto" do grid encolher. O outro modo de minimizar (sem vídeo, split 50/50 - ver
+   content-layout.js) NÃO entra aqui: ali o chat continua funcional, só menor. */
+.chat--strip .chat__messages,
+.chat--strip .composer,
+.chat--strip .composer__attachment,
+.chat--strip .chat__jump {
+    display: none;
+}
+
 .chat__messages {
+    flex: 1;
     overflow-y: auto;
     padding: 16px 16px 8px;
     min-height: 0;
@@ -98,6 +145,19 @@
     overflow-wrap: break-word;
 }
 
+.message__image {
+    display: block;
+    max-width: min(320px, 100%);
+    max-height: 320px;
+    border-radius: var(--r-md);
+    cursor: pointer;
+    object-fit: contain;
+}
+
+.message__image:not(:only-child) {
+    margin-bottom: 6px;
+}
+
 /* ---------------------------------------------------------------- separador de dia */
 
 .day-separator {
@@ -146,30 +206,60 @@
     background: var(--accent-hover);
 }
 
+/* ---------------------------------------------------------------- anexo pendente */
+
+/* Prévia da imagem escolhida, antes de enviar - fica entre o histórico e o composer. */
+.composer__attachment {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0 16px 8px;
+    padding: 6px 8px;
+    border-radius: var(--r-md);
+    background: var(--bg-elevated);
+}
+
+.composer__attachment img {
+    width: 36px;
+    height: 36px;
+    border-radius: var(--r-sm);
+    object-fit: cover;
+}
+
+.composer__attachment-name {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+
 /* ---------------------------------------------------------------- composer */
 
 .composer {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 4px;
     margin: 0 16px 16px;
-    padding: 4px 4px 4px 14px;
+    padding: 4px;
     border-radius: var(--r-md);
     background: var(--bg-elevated);
 }
 
-.composer input {
+.composer input[type="text"] {
     flex: 1;
-    padding: 8px 0;
+    padding: 8px 0 8px 10px;
     border: none;
     background: transparent;
 }
 
-.composer input:focus-visible {
+.composer input[type="text"]:focus-visible {
     outline: none;
     border-color: transparent;
 }
 
+.composer__attach,
 .composer__send {
     display: grid;
     place-items: center;
@@ -179,6 +269,12 @@
     border-radius: var(--r-sm);
     background: transparent;
     color: var(--interactive);
+    flex-shrink: 0;
+}
+
+.composer__attach:hover:not(:disabled) {
+    color: var(--accent);
+    background: var(--bg-hover);
 }
 
 .composer__send:hover:not(:disabled) {

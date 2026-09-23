@@ -9,32 +9,91 @@
 import { el, clear } from '../lib/dom.js';
 import { icon } from '../lib/icons.js';
 import { avatarElement } from '../lib/avatar.js';
+import { showToast } from '../lib/ui-feedback.js';
 
 const GROUP_WINDOW_MS = 5 * 60 * 1000;
 /** Margem em px pra considerar que a pessoa já está no fim da lista. */
 const AT_BOTTOM_SLACK = 40;
 
-export function initChat({ messagesEl, formEl, inputEl, jumpEl, chatStore, onSend }) {
+const ALLOWED_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+
+export function initChat({
+    messagesEl, formEl, inputEl, jumpEl, chatStore, onSend,
+    attachBtn, imageInputEl, attachmentEl, attachmentPreviewEl, attachmentNameEl, attachmentRemoveBtn,
+}) {
     let roomId = null;
     /** Última mensagem renderizada, pra decidir agrupamento sem re-varrer o DOM. */
     let previous = null;
+    /** Arquivo escolhido mas ainda não enviado - só existe entre o "escolher imagem" e o
+     * submit do form (que faz o upload de fato). */
+    let pendingImage = null;
+
+    attachBtn.addEventListener('click', () => imageInputEl.click());
+
+    imageInputEl.addEventListener('change', () => {
+        const file = imageInputEl.files[0];
+        imageInputEl.value = ''; // permite escolher o mesmo arquivo de novo depois de remover
+        if (!file) {
+            return;
+        }
+        if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
+            showToast('Formato de imagem não suportado.', { type: 'error' });
+            return;
+        }
+        if (file.size > MAX_IMAGE_BYTES) {
+            showToast('Imagem maior que 5MB.', { type: 'error' });
+            return;
+        }
+        setPendingImage(file);
+    });
+
+    attachmentRemoveBtn.addEventListener('click', () => setPendingImage(null));
+
+    function setPendingImage(file) {
+        if (pendingImage) {
+            URL.revokeObjectURL(attachmentPreviewEl.src);
+        }
+        pendingImage = file;
+        attachmentEl.classList.toggle('hidden', !file);
+        if (file) {
+            attachmentPreviewEl.src = URL.createObjectURL(file);
+            attachmentNameEl.textContent = file.name;
+        }
+    }
 
     formEl.addEventListener('submit', async (event) => {
         event.preventDefault();
         const text = inputEl.value.trim();
-        if (!text) {
+        const image = pendingImage;
+        if (!text && !image) {
             return;
         }
         // Limpa otimista e deixa o eco do próprio LiveKit renderizar - remetente e
         // destinatário passam pelo mesmo caminho, então não há risco de divergir.
         inputEl.value = '';
+        setPendingImage(null);
         try {
-            await onSend(text);
+            const imageUrl = image ? await uploadImage(image) : undefined;
+            await onSend({ text, imageUrl });
         } catch (error) {
-            inputEl.value = text; // devolve o texto pra não perder o que foi digitado
-            throw error;
+            // devolve texto e imagem pra não perder o que a pessoa preparou
+            inputEl.value = text;
+            setPendingImage(image);
+            showToast(error.message ?? 'Falha ao enviar a mensagem.', { type: 'error' });
         }
     });
+
+    async function uploadImage(file) {
+        const body = new FormData();
+        body.append('file', file);
+        const response = await fetch(`/api/rooms/${encodeURIComponent(roomId)}/images`, { method: 'POST', body });
+        if (!response.ok) {
+            throw new Error('Falha ao enviar a imagem.');
+        }
+        const { url } = await response.json();
+        return url;
+    }
 
     jumpEl.addEventListener('click', () => scrollToBottom());
 
@@ -103,7 +162,11 @@ export function initChat({ messagesEl, formEl, inputEl, jumpEl, chatStore, onSen
     function setEnabled(enabled, placeholder) {
         inputEl.disabled = !enabled;
         formEl.querySelector('button[type="submit"]').disabled = !enabled;
+        attachBtn.disabled = !enabled;
         inputEl.placeholder = placeholder;
+        if (!enabled) {
+            setPendingImage(null);
+        }
     }
 
     function focus() {
@@ -140,7 +203,15 @@ function continuationRow(message, date) {
 
 /** textContent, jamais innerHTML: o conteúdo vem de outro participante. */
 function body(message) {
-    return el('div', { class: 'message__body', text: message.text });
+    return el('div', { class: 'message__body' },
+        message.imageUrl ? el('img', {
+            class: 'message__image',
+            src: message.imageUrl,
+            alt: 'Imagem enviada no chat',
+            loading: 'lazy',
+            onclick: () => window.open(message.imageUrl, '_blank', 'noopener'),
+        }) : null,
+        message.text ? el('span', { text: message.text }) : null);
 }
 
 function daySeparator(date) {

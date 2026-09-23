@@ -95,17 +95,39 @@
             <span class="conn" id="conn-status"></span>
         </header>
 
-        <div class="content">
+        <div class="content" id="content">
             <!--/* O stage nasce escondido: só existe quando alguém transmite imagem. */-->
             <section class="stage hidden" id="stage"></section>
 
-            <section class="chat">
+            <!--/* Arraste pra redimensionar o split stage/chat - só aparece quando faz sentido
+              arrastar (ver regras :has em shell.css). */-->
+            <div class="content__resizer" id="content-resizer" title="Arraste para redimensionar"></div>
+
+            <section class="chat" id="chat-panel">
+                <div class="chat__header">
+                    <span class="chat__header-title">Chat</span>
+                    <span class="chat__header-unread hidden" id="chat-header-unread"></span>
+                    <button class="icon-btn icon-btn--sm" id="btn-chat-collapse" type="button" title="Minimizar chat">
+                        <svg class="icon" width="16" height="16" aria-hidden="true"><use href="#npt-chevron-down"></use></svg>
+                    </button>
+                </div>
                 <div class="chat__messages" id="chat-messages"></div>
                 <button class="chat__jump hidden" id="chat-jump" type="button">
                     <svg class="icon" width="14" height="14" aria-hidden="true"><use href="#npt-arrow-down"></use></svg>
                     Novas mensagens
                 </button>
+                <div class="composer__attachment hidden" id="composer-attachment">
+                    <img id="composer-attachment-preview" alt="Prévia da imagem">
+                    <span class="composer__attachment-name" id="composer-attachment-name"></span>
+                    <button class="icon-btn icon-btn--sm" id="btn-attachment-remove" type="button" title="Remover imagem">
+                        <svg class="icon" width="14" height="14" aria-hidden="true"><use href="#npt-close"></use></svg>
+                    </button>
+                </div>
                 <form class="composer" id="chat-form">
+                    <input id="chat-image-input" type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden>
+                    <button class="composer__attach" id="btn-chat-attach" type="button" title="Enviar imagem" disabled>
+                        <svg class="icon" width="20" height="20" aria-hidden="true"><use href="#npt-image"></use></svg>
+                    </button>
                     <input id="chat-input" type="text" maxlength="500" autocomplete="off"
                            placeholder="Entre num canal para conversar" disabled>
                     <button class="composer__send" type="submit" title="Enviar" disabled>

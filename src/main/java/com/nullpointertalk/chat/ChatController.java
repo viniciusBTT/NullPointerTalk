@@ -37,7 +37,14 @@ public class ChatController {
             log.warn("Mensagem de chat pra sala desconhecida descartada: {}", roomId);
             return;
         }
-        ChatMessage saved = chatService.save(roomId, request.stableId(), request.name(), request.text());
+        boolean hasText = request.text() != null && !request.text().isBlank();
+        boolean hasImage = request.imageUrl() != null && !request.imageUrl().isBlank();
+        if (!hasText && !hasImage) {
+            log.warn("Mensagem de chat vazia (sem texto e sem imagem) descartada: {}", roomId);
+            return;
+        }
+        ChatMessage saved = chatService.save(roomId, request.stableId(), request.name(), request.text(),
+                request.imageUrl());
         messagingTemplate.convertAndSend("/topic/room/" + roomId, ChatMessageView.of(saved));
     }
 }

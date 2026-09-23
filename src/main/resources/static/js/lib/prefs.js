@@ -17,6 +17,8 @@ export const KEYS = {
     devices: 'npt.devices',
     sounds: 'npt.sounds',
     chatLastRead: 'npt.chatLastRead',
+    chatCollapsed: 'npt.chatCollapsed',
+    contentSplit: 'npt.contentSplit',
 };
 
 /**

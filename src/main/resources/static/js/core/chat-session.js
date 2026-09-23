@@ -77,13 +77,13 @@ export class ChatSession extends EventTarget {
         });
     }
 
-    send(roomId, { text, name, stableId }) {
+    send(roomId, { text, name, stableId, imageUrl }) {
         if (!this.#connected) {
             throw new Error('Chat desconectado, tente novamente em instantes.');
         }
         this.#client.publish({
             destination: `/app/chat/${roomId}`,
-            body: JSON.stringify({ text, name, stableId }),
+            body: JSON.stringify({ text, name, stableId, imageUrl }),
         });
     }
 }
