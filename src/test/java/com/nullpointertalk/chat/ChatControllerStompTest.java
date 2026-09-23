@@ -73,7 +73,7 @@ class ChatControllerStompTest {
 
         String text = "mensagem de teste " + Instant.now().toEpochMilli();
         session.send("/app/chat/" + TEST_ROOM_ID,
-                new ChatMessageRequest(text, "Fulano de Teste", "stable-id-teste"));
+                new ChatMessageRequest(text, "Fulano de Teste", "stable-id-teste", null));
 
         ChatMessageView view = received.poll(5, TimeUnit.SECONDS);
         assertEquals(text, view != null ? view.text() : null, "a mensagem publicada deveria chegar no topico");
@@ -109,7 +109,7 @@ class ChatControllerStompTest {
         });
 
         session.send("/app/chat/sala-que-nao-existe",
-                new ChatMessageRequest("nao deveria ir a lugar nenhum", "Fulano", "stable-id-teste"));
+                new ChatMessageRequest("nao deveria ir a lugar nenhum", "Fulano", "stable-id-teste", null));
 
         assertEquals(null, received.poll(2, TimeUnit.SECONDS), "sala desconhecida nao deveria distribuir nada");
         assertTrue(session.isConnected(), "a sessao deveria continuar de pe apos o descarte silencioso");

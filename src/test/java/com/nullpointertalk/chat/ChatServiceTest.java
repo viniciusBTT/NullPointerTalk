@@ -34,7 +34,7 @@ class ChatServiceTest {
     @Test
     void mantemNoMaximo250MensagensPorSala() {
         for (int i = 0; i < 253; i++) {
-            chatService.save(ROOM_ID, "stable-id", "Fulano", "mensagem " + i);
+            chatService.save(ROOM_ID, "stable-id", "Fulano", "mensagem " + i, null);
         }
 
         assertEquals(250, repository.countByRoomId(ROOM_ID));
@@ -43,7 +43,7 @@ class ChatServiceTest {
     @Test
     void apagaAsMaisAntigasPrimeiro() {
         for (int i = 0; i < 252; i++) {
-            chatService.save(ROOM_ID, "stable-id", "Fulano", "mensagem " + i);
+            chatService.save(ROOM_ID, "stable-id", "Fulano", "mensagem " + i, null);
         }
 
         List<ChatMessage> restantes = repository.findTop250ByRoomIdOrderByTimestampDesc(ROOM_ID);
