@@ -368,6 +368,28 @@
 
 .main__chat {
     display: grid;
+    position: relative;
+}
+
+.main__chat.is-active {
+    color: #fff;
+    background: var(--accent);
+}
+
+.main__chat-unread {
+    position: absolute;
+    top: -3px;
+    right: -5px;
+    min-width: 17px;
+    padding: 0 4px;
+    border: 2px solid var(--bg-main);
+    border-radius: var(--r-pill);
+    background: var(--danger);
+    color: #fff;
+    font-size: 0.62rem;
+    font-weight: 700;
+    line-height: 15px;
+    text-align: center;
 }
 
 .main__icon {
@@ -389,17 +411,17 @@
 
 .content {
     display: grid;
+    grid-template-columns: minmax(0, 1fr);
     grid-template-rows: minmax(0, 1fr);
     min-height: 0;
     position: relative;
 }
 
-/* Com o stage visível ele fica com --content-split (padrão 45%) da altura e o chat com o
-   resto. Sem stage, o :has não casa e o chat ocupa a coluna inteira - sem precisar de
-   classe no JS. A variável é escrita pelo content-layout.js: ao arrastar o divisor, e
-   também quando o chat é minimizado sem vídeo ativo (aí vira 50%, ver fim do arquivo). */
-.content:has(> .stage:not(.hidden)) {
-    grid-template-rows: minmax(0, var(--content-split, 45%)) minmax(0, 1fr);
+/* Monitores largos aproveitam melhor a proporção 16:9 com o chat numa coluna lateral. */
+@media (min-width: 901px) {
+    .content:has(> .stage:not(.hidden)):not(.content--chat-hidden) {
+        grid-template-columns: minmax(0, 1fr) minmax(300px, var(--chat-width, 360px));
+    }
 }
 
 /* ---------------------------------------------------------------- controles da chamada */
@@ -500,20 +522,19 @@
         pointer-events: auto;
     }
 
-    /* Tela estreita: o stage merece mais espaço proporcional que no desktop, senão os
-       tiles ficam altos demais pro pouco que sobra. */
-    .content:has(> .stage:not(.hidden)) {
+    /* Em tablets o palco e o chat continuam empilhados e podem ser redimensionados. */
+    .content:has(> .stage:not(.hidden)):not(.content--chat-hidden) {
         grid-template-rows: minmax(0, var(--content-split, 50%)) minmax(0, 1fr);
     }
 }
 
 @media (max-width: 600px) {
     /* Em telefone, o chat não disputa altura com uma transmissão: abre sobre o palco. */
-    .content:has(> .stage:not(.hidden)) {
+    .content:has(> .stage:not(.hidden)):not(.content--chat-hidden) {
         grid-template-rows: minmax(0, 1fr);
     }
 
-    .content:has(> .stage:not(.hidden)) > .chat {
+    .content:not(.content--chat-open):has(> .stage:not(.hidden)) > .chat {
         display: none;
     }
 
@@ -525,7 +546,7 @@
         border-radius: var(--r-md);
         overflow: hidden;
         background: var(--bg-main);
-        box-shadow: var(--shadow-modal);
+        box-shadow: var(--shadow-float);
     }
 
     .control-btn {
@@ -541,19 +562,15 @@
 
 /* ---------------------------------------------------------------- redimensionar / minimizar chat */
 
-/* Faixa fina de arrastar entre stage e chat. position:absolute tira ela do fluxo do grid
-   (não conta como terceiro item pra auto-placement de .stage/.chat), e o top acompanha a
-   mesma variável que dimensiona a linha do stage - a alça fica sempre exatamente em cima
-   da fronteira real entre as duas linhas. */
+/* No desktop o divisor é vertical e acompanha a largura do chat lateral. */
 .content__resizer {
     display: none;
     position: absolute;
-    left: 0;
-    right: 0;
-    top: var(--content-split, 45%);
-    height: 10px;
-    margin-top: -5px;
-    cursor: row-resize;
+    top: 0;
+    right: calc(var(--chat-width, 360px) - 5px);
+    bottom: 0;
+    width: 10px;
+    cursor: col-resize;
     z-index: var(--z-stage-overlay);
     touch-action: none;
 }
@@ -563,39 +580,44 @@
     position: absolute;
     left: 50%;
     top: 50%;
-    width: 36px;
-    height: 4px;
+    width: 4px;
+    height: 36px;
     transform: translate(-50%, -50%);
     border-radius: var(--r-pill);
     background: var(--bg-elevated);
 }
 
-/* Só aparece quando há o que arrastar: precisa do stage visível, e não faz sentido no
-   modo faixa fina (o chat ali não tem altura nenhuma pra negociar). */
-.content:has(> .stage:not(.hidden)) .content__resizer {
+/* O estado explícito impede que uma regra de :has mais específica deixe uma linha vazia. */
+.content:has(> .stage:not(.hidden)):not(.content--chat-hidden) .content__resizer {
     display: block;
 }
 
-.content:has(> .chat--hidden) {
+.content.content--chat-hidden {
+    grid-template-columns: minmax(0, 1fr);
     grid-template-rows: minmax(0, 1fr);
 }
 
-.content:has(> .chat--hidden) .content__resizer {
+.content.content--chat-hidden .content__resizer {
     display: none;
 }
 
-.content:has(> .chat--strip) .content__resizer {
-    display: none;
+@media (max-width: 900px) {
+    .content__resizer {
+        inset: var(--content-split, 50%) 0 auto;
+        width: auto;
+        height: 10px;
+        margin-top: -5px;
+        cursor: row-resize;
+    }
+
+    .content__resizer::after {
+        width: 36px;
+        height: 4px;
+    }
 }
 
-/* Chat minimizado COM vídeo ativo: vira uma faixa do tamanho do próprio cabeçalho (a
-   linha "auto"), e o stage cresce pra ocupar o resto. Essas duas regras têm
-   especificidade parecida com ".content:has(> .stage:not(.hidden))" lá em cima - ficar
-   depois no arquivo é o que garante que ganhem do cascade quando as duas casam. */
-.content:has(> .chat--strip) {
-    grid-template-rows: minmax(0, 1fr) auto;
-}
-
-.chat--strip {
-    grid-row: 2;
+@media (max-width: 600px) {
+    .content__resizer {
+        display: none !important;
+    }
 }

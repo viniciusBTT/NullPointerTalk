@@ -3,13 +3,17 @@
 .stage {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-    align-content: start;
+    align-content: center;
+    justify-items: center;
     gap: 10px;
     padding: 12px;
-    overflow-y: auto;
+    /* O palco é uma área fixa da chamada: a página e a grade não devem ganhar uma
+       barra vertical quando entram mais participantes. */
+    overflow: hidden;
     min-height: 0;
     position: relative;
     background: var(--bg-rail);
+    container-type: size;
 }
 
 .stage__header,
@@ -23,6 +27,9 @@
     grid-template-columns: minmax(0, 1fr);
     grid-template-rows: auto minmax(0, 1fr) auto;
     align-content: stretch;
+    /* O palco principal, cabeçalho e faixa precisam preencher a coluna; a centralização
+       da grade comum vale apenas para os cards fora do modo de apresentação. */
+    justify-items: stretch;
     overflow: hidden;
 }
 
@@ -84,12 +91,22 @@
 
 .stage--presentation .stage__main {
     display: flex;
+    gap: 10px;
+    align-items: center;
+    justify-content: center;
     min-height: 0;
 }
 
 .stage--presentation .stage__main .tile {
-    width: 100%;
-    height: 100%;
+    flex: 0 1 auto;
+    min-width: 0;
+    width: min(100%, var(--stage-main-card-width, 100%));
+    height: auto;
+}
+
+/* Dois pins dividem a largura disponível, mas cada fonte continua em 16:9. */
+.stage--presentation .stage__main:has(.tile:nth-child(2)) .tile {
+    width: min(calc(50% - 5px), var(--stage-main-card-width, 100%));
 }
 
 .stage--presentation .stage__strip {
@@ -108,6 +125,9 @@
 
 .tile {
     position: relative;
+    /* A largura nunca pode fazer a altura 16:9 ultrapassar o palco. Sem esse limite,
+       um card único ficava alguns pixels maior que a área disponível e era cortado. */
+    width: min(100%, 177.778cqh);
     aspect-ratio: 16 / 9;
     border-radius: var(--r-md);
     overflow: hidden;

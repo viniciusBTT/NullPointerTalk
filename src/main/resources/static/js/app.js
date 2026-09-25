@@ -146,31 +146,50 @@ function boot(displayName) {
         }),
     });
 
-    const mobileChatButton = $('btn-chat-mobile');
+    const chatToggleButton = $('btn-chat-toggle');
+    const mobileChatQuery = matchMedia('(max-width: 600px)');
+    const syncChatToggle = (open) => {
+        const label = open ? 'Ocultar chat' : 'Abrir chat';
+        chatToggleButton.title = label;
+        chatToggleButton.setAttribute('aria-label', label);
+        chatToggleButton.setAttribute('aria-expanded', String(open));
+        chatToggleButton.setAttribute('aria-pressed', String(open));
+        chatToggleButton.classList.toggle('is-active', open);
+    };
     const contentLayout = initContentLayout({
         contentEl: $('content'),
         chatEl: $('chat-panel'),
         resizerEl: $('content-resizer'),
-        collapseBtn: $('btn-chat-collapse'),
         stage,
         onCollapsedChange: (collapsed) => {
             if (collapsed) $('content').classList.remove('content--chat-open');
-            mobileChatButton.title = collapsed ? 'Abrir chat' : 'Ocultar chat';
-            mobileChatButton.setAttribute('aria-expanded', String(!collapsed));
+            syncChatToggle(!collapsed);
         },
     });
+    const isChatVisible = () => !contentLayout.isCollapsed()
+        && (!mobileChatQuery.matches || !stage.hasVideo()
+            || $('content').classList.contains('content--chat-open'));
 
-    // Em telefone, vídeo e chat coexistem por sobreposição. Em desktop este mesmo botão
-    // recolhe o painel por inteiro, devolvendo toda a altura ao palco.
-    mobileChatButton.addEventListener('click', () => {
-        const mobileOverlay = matchMedia('(max-width: 600px)').matches && stage.hasVideo();
+    mobileChatQuery.addEventListener('change', () => {
+        $('content').classList.remove('content--chat-open');
+        syncChatToggle(isChatVisible());
+    });
+
+    // Um único controle permanente cuida do chat. Em telefone com vídeo ele abre um
+    // painel sobre o palco; nos demais layouts recolhe ou devolve a área do chat.
+    chatToggleButton.addEventListener('click', () => {
+        const mobileOverlay = mobileChatQuery.matches && stage.hasVideo();
         if (mobileOverlay) {
-            if (contentLayout.isCollapsed()) contentLayout.toggleChat();
+            if (contentLayout.isCollapsed()) contentLayout.openChat();
             const open = $('content').classList.toggle('content--chat-open');
-            mobileChatButton.title = open ? 'Fechar chat' : 'Abrir chat';
-            mobileChatButton.setAttribute('aria-expanded', String(open));
+            syncChatToggle(open);
         } else {
+            $('content').classList.remove('content--chat-open');
             contentLayout.toggleChat();
+        }
+        if (isChatVisible()) {
+            chat.focus();
+            if (session.roomId) chatStore.markRead(session.roomId);
         }
     });
 
@@ -224,10 +243,19 @@ function boot(displayName) {
         const desired = event.detail;
         voicePanel.setLocalState(desired);
         cameraBtn.classList.toggle('is-active', desired.camera);
+        cameraBtn.title = desired.camera ? 'Desligar câmera' : 'Ligar câmera';
+        cameraBtn.setAttribute('aria-label', cameraBtn.title);
+        cameraBtn.setAttribute('aria-pressed', String(desired.camera));
         setIcon(cameraBtn, desired.camera ? 'camera' : 'camera-off');
         screenBtn.classList.toggle('is-active', desired.screen);
+        screenBtn.title = desired.screen ? 'Parar compartilhamento' : 'Compartilhar tela';
+        screenBtn.setAttribute('aria-label', screenBtn.title);
+        screenBtn.setAttribute('aria-pressed', String(desired.screen));
         setIcon(screenBtn, desired.screen ? 'screen-share' : 'screen-share-off');
         listenBtn.classList.toggle('is-active', desired.listenAlong);
+        listenBtn.title = desired.listenAlong ? 'Parar de ouvir junto' : 'Ouvir junto (áudio de uma aba)';
+        listenBtn.setAttribute('aria-label', listenBtn.title);
+        listenBtn.setAttribute('aria-pressed', String(desired.listenAlong));
     });
 
     // ---------------------------------------------------------------- estado da sessão
@@ -245,7 +273,7 @@ function boot(displayName) {
         setHeader(room);
 
         const connected = state === 'connected';
-        mobileChatButton.classList.toggle('hidden', !connected);
+        chatToggleButton.classList.toggle('hidden', !connected);
         $('call-controls').classList.toggle('hidden', state === 'idle');
         [cameraBtn, screenBtn, listenBtn].forEach((button) => {
             button.disabled = !connected;
@@ -308,9 +336,11 @@ function boot(displayName) {
         audioSink.sync(audio);
         if (video.length === 0) {
             $('content').classList.remove('content--chat-open');
-            mobileChatButton.title = 'Abrir chat';
-            mobileChatButton.setAttribute('aria-expanded', 'false');
         }
+        const mobileOverlay = mobileChatQuery.matches && video.length > 0;
+        syncChatToggle(mobileOverlay
+            ? $('content').classList.contains('content--chat-open')
+            : !contentLayout.isCollapsed());
     });
 
     session.addEventListener('speakers', (event) => {
@@ -346,7 +376,7 @@ function boot(displayName) {
         if (stored.isLocal) {
             return; // a própria mensagem nunca conta como não-lida, nem em outra aba
         }
-        if (!isActive || document.hidden) {
+        if (!isActive || document.hidden || !isChatVisible()) {
             chatStore.markUnread(roomId);
         } else {
             chatStore.markRead(roomId, stored.timestamp);
@@ -401,7 +431,7 @@ function boot(displayName) {
 
     // Volta a marcar como lido quando a aba reaparece com o canal aberto.
     document.addEventListener('visibilitychange', () => {
-        if (!document.hidden && session.roomId) {
+        if (!document.hidden && session.roomId && isChatVisible()) {
             chatStore.markRead(session.roomId);
         }
     });
@@ -513,7 +543,7 @@ function boot(displayName) {
      * pode já nascer com 0 não-lidas, e o badge não pode ficar preso no valor da sala
      * anterior). */
     function syncUnreadBadge(roomId) {
-        const badge = $('chat-header-unread');
+        const badge = $('chat-toggle-unread');
         const count = roomId ? chatStore.unread(roomId) : 0;
         badge.textContent = count > 0 ? String(count) : '';
         badge.classList.toggle('hidden', count === 0);

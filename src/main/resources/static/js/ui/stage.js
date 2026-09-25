@@ -6,7 +6,7 @@ import { icon } from '../lib/icons.js';
 
 export function initStage({ root, onParticipantClick, callControls, onFeedback }) {
     const tiles = new Map();
-    let pinnedKey = null;
+    const pinnedKeys = new Set();
     let focusedKey = null;
     const screenOrder = new Map();
     let nextScreenOrder = 0;
@@ -40,13 +40,13 @@ export function initStage({ root, onParticipantClick, callControls, onFeedback }
         const tile = event.target.closest('.tile');
         if (!tile) return;
         const { key, identity } = tile.dataset;
-        if (tile.classList.contains('tile--avatar')) onParticipantClick?.(identity, tile);
-        else if (event.target.closest('[data-pin]')) setPinned(pinnedKey === key ? null : key);
+        if (event.target.closest('[data-pin]')) togglePinned(key);
+        else if (tile.classList.contains('tile--avatar')) onParticipantClick?.(identity, tile);
     });
-    pinButton.addEventListener('click', () => setPinned(pinnedKey === focusedKey ? null : focusedKey));
+    pinButton.addEventListener('click', () => togglePinned(focusedKey));
     fullscreenButton.addEventListener('click', toggleFullscreen);
     noticeAction.addEventListener('click', () => {
-        if (pendingScreenKey && tiles.has(pendingScreenKey)) setPinned(pendingScreenKey);
+        if (pendingScreenKey && tiles.has(pendingScreenKey)) togglePinned(pendingScreenKey);
         hideNotice();
     });
     document.addEventListener('fullscreenchange', () => {
@@ -57,8 +57,16 @@ export function initStage({ root, onParticipantClick, callControls, onFeedback }
         if (!active) restoreControls();
     });
 
-    function setPinned(key) {
-        pinnedKey = key;
+    function togglePinned(key) {
+        if (!key) return;
+        if (pinnedKeys.has(key)) {
+            pinnedKeys.delete(key);
+        } else if (pinnedKeys.size >= 2) {
+            onFeedback?.('Você pode fixar até 2 fontes no palco.', { type: 'error' });
+            return;
+        } else {
+            pinnedKeys.add(key);
+        }
         hideNotice();
         layout();
     }
@@ -71,17 +79,23 @@ export function initStage({ root, onParticipantClick, callControls, onFeedback }
     }
 
     function layout() {
-        focusedKey = pinnedKey && tiles.has(pinnedKey) ? pinnedKey : autoFocusKey();
-        const presentation = focusedKey !== null;
+        const primaryKeys = [...pinnedKeys].filter((key) => tiles.has(key));
+        if (primaryKeys.length === 0) {
+            const autoFocus = autoFocusKey();
+            if (autoFocus) primaryKeys.push(autoFocus);
+        }
+        focusedKey = primaryKeys[0] ?? null;
+        const presentation = primaryKeys.length > 0;
         root.classList.toggle('stage--presentation', presentation);
         const focused = focusedKey ? tiles.get(focusedKey)?.view : null;
-        contextLabel.textContent = focused
-            ? (pinnedKey === focusedKey ? `Fixado por você: ${labelFor(focused)}` : `Apresentando: ${labelFor(focused)}`)
-            : '';
+        const pinnedViews = primaryKeys.map((key) => tiles.get(key)?.view).filter(Boolean);
+        contextLabel.textContent = pinnedKeys.size > 0
+            ? `Fixado${pinnedViews.length > 1 ? 's' : ''} por você: ${pinnedViews.map(labelFor).join(' e ')}`
+            : (focused ? `Apresentando: ${labelFor(focused)}` : '');
         presenterBadge.classList.toggle('hidden', !focused?.isLocal || focused.source !== 'screen_share');
         pinButton.classList.toggle('hidden', !focused);
         if (focused) {
-            const fixed = pinnedKey === focusedKey;
+            const fixed = pinnedKeys.has(focusedKey);
             pinButton.title = fixed ? 'Desafixar do palco' : 'Fixar no palco';
             pinButton.setAttribute('aria-label', pinButton.title);
             pinButton.setAttribute('aria-pressed', String(fixed));
@@ -89,8 +103,8 @@ export function initStage({ root, onParticipantClick, callControls, onFeedback }
         }
         let stripCount = 0;
         for (const [key, entry] of tiles) {
-            const primary = key === focusedKey;
-            updateTile(entry.element, { ...entry.view, pinned: key === pinnedKey, primary, presentation });
+            const primary = primaryKeys.includes(key);
+            updateTile(entry.element, { ...entry.view, pinned: pinnedKeys.has(key), primary, presentation });
             entry.element.classList.toggle('tile--primary', primary);
             entry.element.classList.toggle('tile--thumbnail', presentation && !primary);
             entry.element.classList.toggle('tile--grid', !presentation);
@@ -98,6 +112,10 @@ export function initStage({ root, onParticipantClick, callControls, onFeedback }
             if (presentation && !primary) stripCount += 1;
         }
         root.classList.toggle('stage--has-strip', stripCount > 0);
+        // O tamanho do palco principal já está resolvido pelo grid neste ponto. Passar
+        // essa medida ao CSS evita depender de cqh num elemento com size containment,
+        // que pode resolver para zero e fazer fontes fixadas desaparecerem.
+        main.style.setProperty('--stage-main-card-width', `${main.clientHeight * (16 / 9)}px`);
     }
 
     function buildViews({ participants, videoPubs }) {
@@ -125,7 +143,7 @@ export function initStage({ root, onParticipantClick, callControls, onFeedback }
     }
 
     function showNewScreen(view) {
-        if (!pinnedKey || pinnedKey === view.key) return;
+        if (pinnedKeys.size === 0 || pinnedKeys.has(view.key)) return;
         pendingScreenKey = view.key;
         noticeText.textContent = `${labelFor(view)} começou a compartilhar`;
         notice.classList.remove('hidden');
@@ -166,7 +184,9 @@ export function initStage({ root, onParticipantClick, callControls, onFeedback }
                 tiles.set(key, { element: createTile(view), view });
             }
         }
-        if (pinnedKey && !views.has(pinnedKey)) pinnedKey = null;
+        for (const key of pinnedKeys) {
+            if (!views.has(key)) pinnedKeys.delete(key);
+        }
         newScreens.forEach(showNewScreen);
         layout();
         const hasVideo = videoPubs.length > 0;
@@ -212,7 +232,7 @@ export function initStage({ root, onParticipantClick, callControls, onFeedback }
             entry.view.speaking = speaking.has(entry.view.identity);
             updateTile(entry.element, {
                 ...entry.view,
-                pinned: entry.view.key === pinnedKey,
+                pinned: pinnedKeys.has(entry.view.key),
                 primary: entry.view.key === focusedKey,
                 presentation: focusedKey !== null,
             });
@@ -220,7 +240,7 @@ export function initStage({ root, onParticipantClick, callControls, onFeedback }
     }
     function clear() {
         for (const entry of tiles.values()) destroyTile(entry.element, entry.view);
-        tiles.clear(); screenOrder.clear(); pinnedKey = null; focusedKey = null; nextScreenOrder = 0;
+        tiles.clear(); screenOrder.clear(); pinnedKeys.clear(); focusedKey = null; nextScreenOrder = 0;
         hideNotice(); restoreControls(); main.replaceChildren(); strip.replaceChildren(); root.classList.add('hidden');
     }
     return { render, setSpeaking, clear, setForceAvatars, hasVideo };

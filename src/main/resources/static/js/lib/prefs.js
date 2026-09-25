@@ -19,6 +19,7 @@ export const KEYS = {
     chatLastRead: 'npt.chatLastRead',
     chatCollapsed: 'npt.chatCollapsed',
     contentSplit: 'npt.contentSplit',
+    chatWidth: 'npt.chatWidth',
 };
 
 /**

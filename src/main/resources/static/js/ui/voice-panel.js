@@ -72,12 +72,16 @@ export function initVoicePanel({
         const on = audioSink.deafened;
         deafenBtn.classList.toggle('is-off', on);
         deafenBtn.title = on ? 'Voltar a ouvir' : 'Ficar surdo';
+        deafenBtn.setAttribute('aria-label', deafenBtn.title);
+        deafenBtn.setAttribute('aria-pressed', String(on));
         setIcon(deafenBtn, on ? 'headphones-off' : 'headphones');
     }
 
     function setLocalState(desired) {
         micBtn.classList.toggle('is-off', !desired.mic);
         micBtn.title = desired.mic ? 'Desligar microfone' : 'Ligar microfone';
+        micBtn.setAttribute('aria-label', micBtn.title);
+        micBtn.setAttribute('aria-pressed', String(desired.mic));
         setIcon(micBtn, desired.mic ? 'mic' : 'mic-off');
     }
 

@@ -32,32 +32,6 @@
     color: var(--text-muted);
 }
 
-.chat__header-unread {
-    min-width: 18px;
-    padding: 0 5px;
-    border-radius: var(--r-pill);
-    background: var(--danger);
-    color: #fff;
-    font-size: 0.7rem;
-    font-weight: 700;
-    text-align: center;
-    line-height: 18px;
-}
-
-#btn-chat-collapse {
-    margin-left: auto;
-}
-
-/* Faixa fina (minimizado COM vídeo ativo): só o cabeçalho sobra - é isso que faz a linha
-   "auto" do grid encolher. O outro modo de minimizar (sem vídeo, split 50/50 - ver
-   content-layout.js) NÃO entra aqui: ali o chat continua funcional, só menor. */
-.chat--strip .chat__messages,
-.chat--strip .composer,
-.chat--strip .composer__attachment,
-.chat--strip .chat__jump {
-    display: none;
-}
-
 .chat__messages {
     flex: 1;
     overflow-y: auto;

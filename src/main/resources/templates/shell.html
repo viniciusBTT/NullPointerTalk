@@ -63,21 +63,21 @@
             <div class="voice-panel__me">
                 <span class="voice-panel__avatar" id="voice-identity"></span>
                 <span class="voice-panel__name" id="voice-name">visitante</span>
-                <button class="icon-btn icon-btn--sm" id="btn-rename" type="button" title="Trocar nome">
+                <button class="icon-btn icon-btn--sm" id="btn-rename" type="button" title="Trocar nome" aria-label="Trocar nome">
                     <svg class="icon" width="16" height="16" aria-hidden="true"><use href="#npt-edit"></use></svg>
                 </button>
             </div>
             <div class="voice-panel__actions">
-                <button class="icon-btn" id="btn-mic" type="button" title="Desligar microfone">
+                <button class="icon-btn" id="btn-mic" type="button" title="Desligar microfone" aria-label="Desligar microfone">
                     <svg class="icon" width="20" height="20" aria-hidden="true"><use href="#npt-mic"></use></svg>
                 </button>
-                <button class="icon-btn" id="btn-deafen" type="button" title="Ficar surdo">
+                <button class="icon-btn" id="btn-deafen" type="button" title="Ficar surdo" aria-label="Ficar surdo">
                     <svg class="icon" width="20" height="20" aria-hidden="true"><use href="#npt-headphones"></use></svg>
                 </button>
-                <button class="icon-btn" id="btn-settings" type="button" title="Configurações">
+                <button class="icon-btn" id="btn-settings" type="button" title="Configurações" aria-label="Configurações">
                     <svg class="icon" width="20" height="20" aria-hidden="true"><use href="#npt-gear"></use></svg>
                 </button>
-                <button class="icon-btn icon-btn--danger hidden" id="btn-leave" type="button" title="Sair do canal">
+                <button class="icon-btn icon-btn--danger hidden" id="btn-leave" type="button" title="Sair do canal" aria-label="Sair do canal">
                     <svg class="icon" width="20" height="20" aria-hidden="true"><use href="#npt-phone-off"></use></svg>
                 </button>
             </div>
@@ -92,8 +92,11 @@
             <span class="main__icon" id="header-icon" th:text="${activeRoom != null ? activeRoom.icon() : ''}"></span>
             <h1 class="main__title" id="header-title"
                 th:text="${activeRoom != null ? activeRoom.name() : 'NullPointerTalk'}">NullPointerTalk</h1>
-            <button class="icon-btn main__chat hidden" id="btn-chat-mobile" type="button" title="Abrir chat" aria-expanded="false">
+            <button class="icon-btn main__chat hidden" id="btn-chat-toggle" type="button"
+                    title="Abrir chat" aria-label="Abrir chat" aria-controls="chat-panel"
+                    aria-expanded="false" aria-pressed="false">
                 <svg class="icon" width="20" height="20" aria-hidden="true"><use href="#npt-chat"></use></svg>
+                <span class="main__chat-unread hidden" id="chat-toggle-unread"></span>
             </button>
             <span class="conn" id="conn-status"></span>
         </header>
@@ -104,15 +107,14 @@
 
             <!--/* Arraste pra redimensionar o split stage/chat - só aparece quando faz sentido
               arrastar (ver regras :has em shell.css). */-->
-            <div class="content__resizer" id="content-resizer" title="Arraste para redimensionar"></div>
+            <div class="content__resizer" id="content-resizer" role="separator" tabindex="0"
+                 aria-label="Redimensionar palco e chat" aria-controls="stage chat-panel"
+                 aria-orientation="vertical" aria-valuemin="300" aria-valuemax="520"
+                 aria-valuenow="360" title="Arraste ou use as setas para redimensionar"></div>
 
             <section class="chat" id="chat-panel">
                 <div class="chat__header">
                     <span class="chat__header-title">Chat</span>
-                    <span class="chat__header-unread hidden" id="chat-header-unread"></span>
-                    <button class="icon-btn icon-btn--sm" id="btn-chat-collapse" type="button" title="Minimizar chat">
-                        <svg class="icon" width="16" height="16" aria-hidden="true"><use href="#npt-chevron-down"></use></svg>
-                    </button>
                 </div>
                 <div class="chat__messages" id="chat-messages"></div>
                 <button class="chat__jump hidden" id="chat-jump" type="button">
@@ -141,16 +143,16 @@
         </div>
 
         <footer class="call-controls hidden" id="call-controls">
-            <button class="control-btn" id="btn-camera" type="button" title="Ligar câmera" disabled>
+            <button class="control-btn" id="btn-camera" type="button" title="Ligar câmera" aria-label="Ligar câmera" disabled>
                 <svg class="icon" width="22" height="22" aria-hidden="true"><use href="#npt-camera-off"></use></svg>
             </button>
-            <button class="control-btn" id="btn-screen" type="button" title="Compartilhar tela" disabled>
+            <button class="control-btn" id="btn-screen" type="button" title="Compartilhar tela" aria-label="Compartilhar tela" disabled>
                 <svg class="icon" width="22" height="22" aria-hidden="true"><use href="#npt-screen-share-off"></use></svg>
             </button>
-            <button class="control-btn" id="btn-listen" type="button" title="Ouvir junto (áudio de uma aba)" disabled>
+            <button class="control-btn" id="btn-listen" type="button" title="Ouvir junto (áudio de uma aba)" aria-label="Ouvir junto (áudio de uma aba)" disabled>
                 <svg class="icon" width="22" height="22" aria-hidden="true"><use href="#npt-music"></use></svg>
             </button>
-            <button class="control-btn control-btn--danger" id="btn-hangup" type="button" title="Sair do canal">
+            <button class="control-btn control-btn--danger" id="btn-hangup" type="button" title="Sair do canal" aria-label="Sair do canal">
                 <svg class="icon" width="22" height="22" aria-hidden="true"><use href="#npt-phone-off"></use></svg>
             </button>
         </footer>
