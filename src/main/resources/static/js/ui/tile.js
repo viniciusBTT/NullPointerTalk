@@ -51,6 +51,16 @@ export function createTile(view) {
     footer.appendChild(badges);
     tile.appendChild(footer);
 
+    if (view.kind === 'video') {
+        tile.appendChild(el('button', {
+            class: 'tile__pin',
+            type: 'button',
+            dataset: { pin: '' },
+            title: 'Fixar no palco',
+            ariaLabel: 'Fixar no palco',
+        }, icon('pin', { size: 16 })));
+    }
+
     tile.appendChild(el('span', { class: 'tile__quality', title: '' }, icon('signal', { size: 14 })));
 
     updateTile(tile, view);
@@ -65,7 +75,15 @@ export function updateTile(tile, view) {
         'tile--video': view.kind === 'video',
         'tile--avatar': view.kind === 'avatar',
         'tile--screen': view.source === 'screen_share',
+        'tile--pinned': view.pinned,
     });
+
+    const pin = tile.querySelector('.tile__pin');
+    if (pin) {
+        pin.title = view.pinned ? 'Desafixar do palco' : 'Fixar no palco';
+        pin.setAttribute('aria-label', pin.title);
+        pin.setAttribute('aria-pressed', String(Boolean(view.pinned)));
+    }
 
     const badges = tile.querySelector('.tile__badges');
     badges.replaceChildren();

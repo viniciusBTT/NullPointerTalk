@@ -7,6 +7,11 @@
     min-height: 0;
 }
 
+/* Recolhido significa fora do layout, não uma faixa que ainda toma altura do palco. */
+.chat--hidden {
+    display: none !important;
+}
+
 /* ---------------------------------------------------------------- cabeçalho / minimizar */
 
 .chat__header {

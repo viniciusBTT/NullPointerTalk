@@ -366,6 +366,10 @@
     display: none; /* só aparece quando a sidebar vira gaveta */
 }
 
+.main__chat {
+    display: grid;
+}
+
 .main__icon {
     font-size: 1rem;
 }
@@ -504,6 +508,26 @@
 }
 
 @media (max-width: 600px) {
+    /* Em telefone, o chat não disputa altura com uma transmissão: abre sobre o palco. */
+    .content:has(> .stage:not(.hidden)) {
+        grid-template-rows: minmax(0, 1fr);
+    }
+
+    .content:has(> .stage:not(.hidden)) > .chat {
+        display: none;
+    }
+
+    .content.content--chat-open > .chat {
+        display: flex;
+        position: absolute;
+        inset: 8px;
+        z-index: var(--z-stage-overlay);
+        border-radius: var(--r-md);
+        overflow: hidden;
+        background: var(--bg-main);
+        box-shadow: var(--shadow-modal);
+    }
+
     .control-btn {
         width: 44px;
         height: 44px;
@@ -550,6 +574,14 @@
    modo faixa fina (o chat ali não tem altura nenhuma pra negociar). */
 .content:has(> .stage:not(.hidden)) .content__resizer {
     display: block;
+}
+
+.content:has(> .chat--hidden) {
+    grid-template-rows: minmax(0, 1fr);
+}
+
+.content:has(> .chat--hidden) .content__resizer {
+    display: none;
 }
 
 .content:has(> .chat--strip) .content__resizer {

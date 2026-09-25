@@ -5,6 +5,7 @@
 
 let toastContainer;
 let bannerContainer;
+const groupedToasts = new Map();
 
 function getToastContainer() {
     if (!toastContainer) {
@@ -25,12 +26,27 @@ function getBannerContainer() {
 }
 
 /** Mensagem que some sozinha depois de alguns segundos (ex: entrou/saiu da sala). */
-export function showToast(message, { type = 'info', durationMs = 4000 } = {}) {
+export function showToast(message, { type = 'info', durationMs = 4000, groupKey } = {}) {
+    const grouped = groupKey ? groupedToasts.get(groupKey) : null;
+    if (grouped) {
+        grouped.node.textContent = message;
+        grouped.node.className = `toast toast--${type}`;
+        clearTimeout(grouped.timeout);
+        grouped.timeout = setTimeout(() => {
+            grouped.node.remove();
+            groupedToasts.delete(groupKey);
+        }, durationMs);
+        return;
+    }
     const toast = document.createElement('div');
     toast.className = `toast toast--${type}`;
     toast.textContent = message;
     getToastContainer().appendChild(toast);
-    setTimeout(() => toast.remove(), durationMs);
+    const timeout = setTimeout(() => {
+        toast.remove();
+        if (groupKey) groupedToasts.delete(groupKey);
+    }, durationMs);
+    if (groupKey) groupedToasts.set(groupKey, { node: toast, timeout });
 }
 
 /**

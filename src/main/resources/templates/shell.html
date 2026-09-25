@@ -92,6 +92,9 @@
             <span class="main__icon" id="header-icon" th:text="${activeRoom != null ? activeRoom.icon() : ''}"></span>
             <h1 class="main__title" id="header-title"
                 th:text="${activeRoom != null ? activeRoom.name() : 'NullPointerTalk'}">NullPointerTalk</h1>
+            <button class="icon-btn main__chat hidden" id="btn-chat-mobile" type="button" title="Abrir chat" aria-expanded="false">
+                <svg class="icon" width="20" height="20" aria-hidden="true"><use href="#npt-chat"></use></svg>
+            </button>
             <span class="conn" id="conn-status"></span>
         </header>
 

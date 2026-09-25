@@ -115,7 +115,12 @@ function boot(displayName) {
         onError: (message) => showToast(message, { type: 'error' }),
     });
 
-    const stage = initStage({ root: $('stage'), onParticipantClick: openParticipant });
+    const stage = initStage({
+        root: $('stage'),
+        onParticipantClick: openParticipant,
+        callControls: $('call-controls'),
+        onFeedback: showToast,
+    });
 
     const chat = initChat({
         messagesEl: $('chat-messages'),
@@ -141,12 +146,32 @@ function boot(displayName) {
         }),
     });
 
+    const mobileChatButton = $('btn-chat-mobile');
     const contentLayout = initContentLayout({
         contentEl: $('content'),
         chatEl: $('chat-panel'),
         resizerEl: $('content-resizer'),
         collapseBtn: $('btn-chat-collapse'),
         stage,
+        onCollapsedChange: (collapsed) => {
+            if (collapsed) $('content').classList.remove('content--chat-open');
+            mobileChatButton.title = collapsed ? 'Abrir chat' : 'Ocultar chat';
+            mobileChatButton.setAttribute('aria-expanded', String(!collapsed));
+        },
+    });
+
+    // Em telefone, vídeo e chat coexistem por sobreposição. Em desktop este mesmo botão
+    // recolhe o painel por inteiro, devolvendo toda a altura ao palco.
+    mobileChatButton.addEventListener('click', () => {
+        const mobileOverlay = matchMedia('(max-width: 600px)').matches && stage.hasVideo();
+        if (mobileOverlay) {
+            if (contentLayout.isCollapsed()) contentLayout.toggleChat();
+            const open = $('content').classList.toggle('content--chat-open');
+            mobileChatButton.title = open ? 'Fechar chat' : 'Abrir chat';
+            mobileChatButton.setAttribute('aria-expanded', String(open));
+        } else {
+            contentLayout.toggleChat();
+        }
     });
 
     const settings = initSettingsModal({
@@ -220,6 +245,7 @@ function boot(displayName) {
         setHeader(room);
 
         const connected = state === 'connected';
+        mobileChatButton.classList.toggle('hidden', !connected);
         $('call-controls').classList.toggle('hidden', state === 'idle');
         [cameraBtn, screenBtn, listenBtn].forEach((button) => {
             button.disabled = !connected;
@@ -280,6 +306,11 @@ function boot(displayName) {
         stage.render({ participants: lastParticipants, videoPubs: video });
         contentLayout.refresh();
         audioSink.sync(audio);
+        if (video.length === 0) {
+            $('content').classList.remove('content--chat-open');
+            mobileChatButton.title = 'Abrir chat';
+            mobileChatButton.setAttribute('aria-expanded', 'false');
+        }
     });
 
     session.addEventListener('speakers', (event) => {
@@ -319,6 +350,13 @@ function boot(displayName) {
             chatStore.markUnread(roomId);
         } else {
             chatStore.markRead(roomId, stored.timestamp);
+        }
+        if (stage.hasVideo() && roomId === session.roomId) {
+            const text = stored.text?.trim().replace(/\s+/g, ' ');
+            const preview = text
+                ? `${text.slice(0, 120)}${text.length > 120 ? '…' : ''}`
+                : (stored.imageUrl ? 'enviou uma imagem' : 'enviou uma mensagem');
+            showToast(`${stored.name}: ${preview}`, { groupKey: `chat:${stored.stableId || stored.name}` });
         }
     });
 
